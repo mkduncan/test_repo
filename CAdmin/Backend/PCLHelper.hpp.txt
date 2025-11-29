@@ -1,0 +1,41 @@
+
+/**
+ * @file PCLHelper.hpp
+ * @brief Utilities for generating PCL (Printer Command Language) and PJL commands.
+ * 
+ * Used for advanced windowing control and legacy printer support.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+
+namespace Cognitive::Business {
+
+class PCLHelper {
+public:
+    static std::string startJob(const std::string& jobName = "");
+    static std::string endJob();
+    
+    /**
+     * @brief Generates PJL commands to set the CPL label window parameters.
+     */
+    static std::string setLabelWindow(int originX, int originY, int width, int length);
+
+    /**
+     * @brief Generates standard PJL windowing command string.
+     */
+    static std::string generateWindowCommand(int x, int y, int w, int h);
+
+    static std::string enterPCLMode();
+    static std::string exitPCLMode();
+    static std::vector<uint8_t> wrapData(const std::vector<uint8_t>& data);
+    
+    // PJL Constants
+    static const std::string PJL_ENTER;
+    static const std::string PJL_EXIT;
+    static const std::string PJL_ENTER_PCL;
+    static const std::string PJL_EXIT_PCL;
+};
+
+}

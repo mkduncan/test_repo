@@ -1,0 +1,41 @@
+/**
+ * @file MainFrame.hpp
+ * @brief Main GUI Window class.
+ * 
+ * Inherits from wxFrame. Hosts the WebView2 control and initializes
+ * the WebBridge. Handles top-level window events.
+ */
+
+#pragma once
+#include <wx/wx.h>
+#include <wx/webview.h>
+#include <memory>
+#include "WebBridge.hpp"
+
+namespace Cognitive::UI {
+
+class MainFrame : public wxFrame {
+public:
+    /**
+     * @brief Constructs the main application window.
+     * @param title Window title.
+     */
+    MainFrame(const wxString& title);
+    ~MainFrame();
+
+private:
+    void initUI();
+    void setupWebView();
+    
+    // Event Handlers
+    void onScriptMessage(wxWebViewEvent& evt);
+    void onResize(wxSizeEvent& evt);
+    void onClose(wxCloseEvent& evt);
+
+    wxWebView* webView_ = nullptr;
+    std::unique_ptr<WebBridge> bridge_;
+    
+    wxDECLARE_EVENT_TABLE();
+};
+
+}

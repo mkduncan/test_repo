@@ -1,0 +1,80 @@
+
+
+/**
+ * @file BTDevice.hpp
+ * @brief Bluetooth communication driver.
+ * 
+ * Handles both Classic Bluetooth (RFCOMM/SPP) via WinSock on Windows
+ * and potentially BLE if hardware supports it.
+ */
+
+#pragma once
+#include "Device.hpp"
+#include <memory>
+
+namespace Cognitive::HAL {
+
+class BTDevice : public Device {
+public:
+    BTDevice();
+    ~BTDevice() override;
+
+    /**
+     * @brief Connects to a Bluetooth device.
+     * @param path Bluetooth MAC address formatted as string (e.g., "00:11:22:33:44:55").
+     */
+    bool open(const std::string& path) override;
+    void close() override;
+    [[nodiscard]] bool isOpen() const override;
+
+    bool write(std::span<const uint8_t> data) override;
+    std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) override;
+
+    /**
+     * @brief Discards any pending data on the BT socket.
+     */
+    void purge() override;
+
+    [[nodiscard]] DeviceType getType() const override { return DeviceType::Bluetooth; }
+    [[nodiscard]] std::string getPath() const override { return address_; }
+
+    /**
+     * @brief Sets the PIN code used for pairing authentication.
+     * Call this before open() if pairing is expected.
+     * @param pin The PIN string (e.g. "0000" or "1234").
+     */
+    void setPin(const std::string& pin);
+
+    /**
+     * @brief Performs a Bluetooth device inquiry/scan.
+     * @return List of found devices with metadata (RSSI, Name).
+     */
+    static std::vector<DeviceInfo> enumerate();
+    
+    /**
+     * @brief Removes a paired device from the OS cache.
+     * @param address MAC address.
+     * @return true on success.
+     */
+    static bool unpair(const std::string& address);
+
+    /**
+     * @brief Checks if the connection is Low Energy (BLE) or Classic.
+     * @return true if BLE.
+     */
+    bool isLowEnergy() const;
+
+    /**
+     * @brief Gets the Received Signal Strength Indicator.
+     * @return RSSI value in dBm (typically negative, e.g., -60). 0 if unavailable.
+     */
+    int getRSSI() const;
+
+private:
+    struct Impl; // PIMPL to hide platform Bluetooth headers (WinSock/BlueZ)
+    std::unique_ptr<Impl> pImpl_;
+    std::string address_;
+    std::string pin_;
+};
+
+}

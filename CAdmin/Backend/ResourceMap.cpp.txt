@@ -1,0 +1,184 @@
+#include "ResourceMap.hpp"
+#include "Obfuscation.hpp"
+#include "Debug.hpp"
+#include <filesystem>
+#include <fstream>
+#include <vector>
+#include <string>
+
+namespace Cognitive::Business {
+
+const std::string ResourceMap::FW_LX = OBF("195170.408");
+const std::string ResourceMap::FW_DLX = OBF("195170.409");
+const std::string ResourceMap::FW_CI = OBF("195170.409");
+const std::string ResourceMap::FW_CXI = OBF("195170.409");
+const std::string ResourceMap::FW_PCL = OBF("195176.406");
+const std::string ResourceMap::FW_TG = OBF("195170.409");
+
+const std::vector<std::string> ResourceMap::FONT_LIST_GENERAL_200 = {
+    OBF("8859-1.map"), OBF("8859-2.map"), OBF("8859-5.map"), OBF("8859-7.map"),
+    OBF("8859-9.map"), OBF("8859-15.map"), OBF("CP437.map"), OBF("CP737.map"),
+    OBF("CP850.map"), OBF("CP852.map"), OBF("CP855.map"), OBF("CP857.map"),
+    OBF("CP860.map"), OBF("CP861.map"), OBF("CP863.map"), OBF("CP865.map"),
+    OBF("CP866.map"), OBF("CP869.map"), OBF("CP1250.map"), OBF("CP1251.map"),
+    OBF("CP1252.map"), OBF("CP1253.map"), OBF("CP1254.map"), OBF("ItalianKBMap.map"),
+    OBF("RussianKBMap.map"), OBF("SpanishKBMap.map"), OBF("19021001uffonta.chr"),
+    OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"), OBF("F3x5.chr"),
+    OBF("F5x7ex.chr"), OBF("F8x8ex.chr"), OBF("F9x12ex.chr"), OBF("F12x16ex.chr"),
+    OBF("F18x23ex.chr"), OBF("F24x31ex.chr"), OBF("tri06_U.chr"), OBF("tri08_U.chr"),
+    OBF("tri10_U.chr"), OBF("tri16_U.chr"), OBF("tri24_U.chr"), OBF("tri36_U.chr"),
+    OBF("tri48_U.chr"), OBF("EPL1_200.chr"), OBF("EPL2_200.chr"), OBF("EPL3_200.chr"),
+    OBF("EPL4_200.chr"), OBF("EPL5_200.chr"), OBF("ZPLA.chr"), OBF("ZPLB.chr"),
+    OBF("ZPLD.chr"), OBF("ZPLE_200.chr"), OBF("ZPLF.chr"), OBF("ZPLG.chr"),
+    OBF("ZPLH_200.chr"), OBF("ZPLP.chr"), OBF("ZPLQ.chr"), OBF("ZPLR.chr"),
+    OBF("ZPLS.chr"), OBF("ZPLT.chr"), OBF("ZPLU.chr"), OBF("ZPLV.chr"),
+    OBF("ZPL0.chr"), OBF("19010201.fnt"), OBF("19010301.fnt"), OBF("19010401.fnt"),
+    OBF("ocrb16.chr"), OBF("ocrb18.chr"), OBF("ocrb24.chr"), OBF("shftj16.chr"),
+    OBF("shftj24.chr"), OBF("shftjis.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_GENERAL_300 = {
+    OBF("8859-1.map"), OBF("8859-2.map"), OBF("8859-5.map"), OBF("8859-7.map"),
+    OBF("8859-9.map"), OBF("8859-15.map"), OBF("CP437.map"), OBF("CP737.map"),
+    OBF("CP850.map"), OBF("CP852.map"), OBF("CP855.map"), OBF("CP857.map"),
+    OBF("CP860.map"), OBF("CP861.map"), OBF("CP863.map"), OBF("CP865.map"),
+    OBF("CP866.map"), OBF("CP869.map"), OBF("CP1250.map"), OBF("CP1251.map"),
+    OBF("CP1252.map"), OBF("CP1253.map"), OBF("CP1254.map"), OBF("ItalianKBMap.map"),
+    OBF("RussianKBMap.map"), OBF("SpanishKBMap.map"), OBF("19021001uffonta.chr"),
+    OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"), OBF("F3x5.chr"),
+    OBF("F5x7ex.chr"), OBF("F8x8ex.chr"), OBF("F9x12ex.chr"), OBF("F12x16ex.chr"),
+    OBF("F18x23ex.chr"), OBF("F24x31ex.chr"), OBF("tri06_U_300.chr"), OBF("tri08_U_300.chr"),
+    OBF("tri10_U_300.chr"), OBF("tri16_U_300.chr"), OBF("tri24_U_300.chr"), OBF("tri36_U_300.chr"),
+    OBF("tri48_U_300.chr"), OBF("EPL1_300.chr"), OBF("EPL2_300.chr"), OBF("EPL3_300.chr"),
+    OBF("EPL4_300.chr"), OBF("EPL5_300.chr"), OBF("ZPLA.chr"), OBF("ZPLB.chr"),
+    OBF("ZPLD.chr"), OBF("ZPLE_300.chr"), OBF("ZPLF.chr"), OBF("ZPLG.chr"),
+    OBF("ZPLH_300.chr"), OBF("ZPLP.chr"), OBF("ZPLQ.chr"), OBF("ZPLR.chr"),
+    OBF("ZPLS.chr"), OBF("ZPLT.chr"), OBF("ZPLU.chr"), OBF("ZPLV.chr"),
+    OBF("ZPL0.chr"), OBF("19010201.fnt"), OBF("19010301.fnt"), OBF("19010401.fnt"),
+    OBF("ocrb16.chr"), OBF("ocrb18.chr"), OBF("ocrb24.chr"), OBF("shftj16.chr"),
+    OBF("shftj24.chr"), OBF("shftjis.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_WINGMAN_200 = {
+    OBF("8859-1.map"), OBF("8859-2.map"), OBF("8859-5.map"), OBF("8859-7.map"),
+    OBF("8859-9.map"), OBF("8859-15.map"), OBF("CP437.map"), OBF("CP737.map"),
+    OBF("CP850.map"), OBF("CP852.map"), OBF("CP855.map"), OBF("CP857.map"),
+    OBF("CP860.map"), OBF("CP861.map"), OBF("CP863.map"), OBF("CP865.map"),
+    OBF("CP866.map"), OBF("CP869.map"), OBF("CP1250.map"), OBF("CP1251.map"),
+    OBF("CP1252.map"), OBF("CP1253.map"), OBF("CP1254.map"), OBF("ItalianKBMap.map"),
+    OBF("RussianKBMap.map"), OBF("SpanishKBMap.map"), OBF("19021001uffonta.chr"),
+    OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"), OBF("EPL1_200.chr"),
+    OBF("EPL2_200.chr"), OBF("EPL3_200.chr"), OBF("EPL4_200.chr"), OBF("EPL5_200.chr"),
+    OBF("ZPLA.chr"), OBF("ZPLB.chr"), OBF("ZPLD.chr"), OBF("ZPLE_200.chr"),
+    OBF("ZPLF.chr"), OBF("ZPLG.chr"), OBF("ZPLH_200.chr"), OBF("ZPLP.chr"),
+    OBF("ZPLQ.chr"), OBF("ZPLR.chr"), OBF("ZPLS.chr"), OBF("ZPLT.chr"),
+    OBF("ZPLU.chr"), OBF("ZPLV.chr"), OBF("ZPL0.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_WINGMAN_300 = {
+    OBF("8859-1.map"), OBF("8859-2.map"), OBF("8859-5.map"), OBF("8859-7.map"),
+    OBF("8859-9.map"), OBF("8859-15.map"), OBF("CP437.map"), OBF("CP737.map"),
+    OBF("CP850.map"), OBF("CP852.map"), OBF("CP855.map"), OBF("CP857.map"),
+    OBF("CP860.map"), OBF("CP861.map"), OBF("CP863.map"), OBF("CP865.map"),
+    OBF("CP866.map"), OBF("CP869.map"), OBF("CP1250.map"), OBF("CP1251.map"),
+    OBF("CP1252.map"), OBF("CP1253.map"), OBF("CP1254.map"), OBF("ItalianKBMap.map"),
+    OBF("RussianKBMap.map"), OBF("SpanishKBMap.map"), OBF("19021001uffonta.chr"),
+    OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"), OBF("EPL1_300.chr"),
+    OBF("EPL2_300.chr"), OBF("EPL3_300.chr"), OBF("EPL4_300.chr"), OBF("EPL5_300.chr"),
+    OBF("ZPLA.chr"), OBF("ZPLB.chr"), OBF("ZPLD.chr"), OBF("ZPLE_300.chr"),
+    OBF("ZPLF.chr"), OBF("ZPLG.chr"), OBF("ZPLH_300.chr"), OBF("ZPLP.chr"),
+    OBF("ZPLQ.chr"), OBF("ZPLR.chr"), OBF("ZPLS.chr"), OBF("ZPLT.chr"),
+    OBF("ZPLU.chr"), OBF("ZPLV.chr"), OBF("ZPL0.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_PCL = {
+    OBF("8859-1.map"), OBF("8859-2.map"), OBF("8859-5.map"), OBF("8859-7.map"),
+    OBF("8859-9.map"), OBF("8859-15.map"), OBF("CP437.map"), OBF("CP737.map"),
+    OBF("CP850.map"), OBF("CP852.map"), OBF("CP855.map"), OBF("CP857.map"),
+    OBF("CP860.map"), OBF("CP861.map"), OBF("CP863.map"), OBF("CP865.map"),
+    OBF("CP866.map"), OBF("CP869.map"), OBF("CP1250.map"), OBF("CP1251.map"),
+    OBF("CP1252.map"), OBF("CP1253.map"), OBF("CP1254.map"), OBF("ItalianKBMap.map"),
+    OBF("RussianKBMap.map"), OBF("SpanishKBMap.map"), OBF("19021001uffonta.chr"),
+    OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"), OBF("F3x5.chr"),
+    OBF("F5x7ex.chr"), OBF("F8x8ex.chr"), OBF("F9x12ex.chr"), OBF("F12x16ex.chr"),
+    OBF("F18x23ex.chr"), OBF("F24x31ex.chr"), OBF("tri06_U_300.chr"), OBF("tri08_U_300.chr"),
+    OBF("tri10_U_300.chr"), OBF("tri16_U_300.chr"), OBF("tri24_U_300.chr"), OBF("tri36_U_300.chr"),
+    OBF("tri48_U_300.chr"), OBF("19010201.fnt"), OBF("19010301.fnt"), OBF("19010401.fnt"),
+    OBF("ocrb16.chr"), OBF("ocrb18.chr"), OBF("ocrb24.chr"), OBF("shftj16.chr"),
+    OBF("shftj24.chr"), OBF("shftjis.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_ASIAN = {
+    OBF("19010201.fnt"), OBF("19010301.fnt"), OBF("19010401.fnt"), OBF("ocrb16.chr"),
+    OBF("ocrb18.chr"), OBF("ocrb24.chr"), OBF("shftj16.chr"), OBF("shftj24.chr"),
+    OBF("shftjis.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_LX_200 = {
+    OBF("19021001uffonta.chr"), OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"),
+    OBF("F3x5.chr"), OBF("F5x7ex.chr"), OBF("F8x8ex.chr"), OBF("F9x12ex.chr"),
+    OBF("F12x16ex.chr"), OBF("F18x23ex.chr"), OBF("F24x31ex.chr"), OBF("Tri06.chr"),
+    OBF("Tri08.chr"), OBF("Tri10.chr"), OBF("Tri16.chr"), OBF("Tri24.chr"),
+    OBF("Tri36.chr"), OBF("Tri48.chr"), OBF("19010201.fnt"), OBF("19010301.fnt"),
+    OBF("19010401.fnt"), OBF("ocrb16.chr"), OBF("ocrb18.chr"), OBF("ocrb24.chr"),
+    OBF("shftj16.chr"), OBF("shftj24.chr"), OBF("shftjis.chr")
+};
+
+const std::vector<std::string> ResourceMap::FONT_LIST_LX_300 = {
+    OBF("19021001uffonta.chr"), OBF("19021001uffontd.chr"), OBF("19021101uffontb.chr"),
+    OBF("F3x5.chr"), OBF("F5x7ex.chr"), OBF("F8x8ex.chr"), OBF("F9x12ex.chr"),
+    OBF("F12x16ex.chr"), OBF("F18x23ex.chr"), OBF("F24x31ex.chr"), OBF("Tri06CG_3.chr"),
+    OBF("Tri08CG_3.chr"), OBF("Tri10CG_3.chr"), OBF("Tri16CG_3.chr"), OBF("Tri24CG_3.chr"),
+    OBF("Tri36CG_3.chr"), OBF("Tri48CG_3.chr"), OBF("19010201.fnt"), OBF("19010301.fnt"),
+    OBF("19010401.fnt"), OBF("ocrb16.chr"), OBF("ocrb18.chr"), OBF("ocrb24.chr"),
+    OBF("shftj16.chr"), OBF("shftj24.chr"), OBF("shftjis.chr")
+};
+
+std::string ResourceMap::getLatestFirmware(const PrinterConfig& config) {
+    if (config.isPCL) return FW_PCL;
+    if (config.isTGModelNumber) return FW_TG;
+    
+    switch (config.productLine) {
+        case ProductLine::LX: return FW_LX;
+        case ProductLine::DLX: return FW_DLX;
+        case ProductLine::CI: return FW_CI;
+        case ProductLine::CXI: return FW_CXI;
+        default: return FW_DLX;
+    }
+}
+
+std::vector<std::string> ResourceMap::getFontList(const PrinterConfig& config) {
+    if (config.isPCL) return FONT_LIST_PCL;
+    
+    bool is300 = (config.printDensity == 300);
+    
+    if (config.isLX) return is300 ? FONT_LIST_LX_300 : FONT_LIST_LX_200;
+    if (config.isWingman) return is300 ? FONT_LIST_WINGMAN_300 : FONT_LIST_WINGMAN_200;
+    
+    return is300 ? FONT_LIST_GENERAL_300 : FONT_LIST_GENERAL_200;
+}
+
+std::vector<std::string> ResourceMap::getCPRList(const PrinterConfig& config) {
+    std::vector<std::string> cprs;
+    
+    if (config.productLine == ProductLine::DLX) cprs.push_back(OBF("base_dlx.cpr"));
+    if (config.productLine == ProductLine::CXI) cprs.push_back(OBF("base_c.cpr"));
+    
+    cprs.push_back(config.printMethod == PrintMethod::DirectThermal ? OBF("mode_dt.cpr") : OBF("mode_tt.cpr"));
+    
+    return cprs;
+}
+
+std::vector<uint8_t> ResourceMap::getResource(const std::string& filename) {
+    std::filesystem::path path = std::filesystem::current_path() / "Resources" / filename;
+    
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        Debug::Logger::Error(OBF("Failed to load resource: ") + filename);
+        return {};
+    }
+    
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+}
+
+}

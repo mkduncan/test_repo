@@ -1,0 +1,68 @@
+#include "Debug.hpp"
+#include <mutex>
+#include <chrono>
+#include <iomanip>
+#include <ctime>
+#include <iostream>
+
+namespace Cognitive::Debug {
+
+static std::mutex s_logMutex;
+static Logger::LogCallback s_callback = nullptr;
+
+void Logger::setCallback(LogCallback cb) {
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    s_callback = std::move(cb);
+}
+
+void Logger::Log(LogLevel level, const std::string& message, const std::source_location& loc) {
+    std::lock_guard<std::mutex> lock(s_logMutex);
+    
+    auto now = std::chrono::system_clock::now();
+    auto time = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+    
+    std::tm tm{};
+    #ifdef _WIN32
+        localtime_s(&tm, &time);
+    #else
+        localtime_r(&time, &tm);
+    #endif
+
+    std::string levelStr;
+    switch (level) {
+        case LogLevel::Trace: levelStr = "[TRACE]"; break;
+        case LogLevel::Info:  levelStr = "[INFO ]"; break;
+        case LogLevel::Warning: levelStr = "[WARN ]"; break;
+        case LogLevel::Error: levelStr = "[ERROR]"; break;
+        case LogLevel::Critical: levelStr = "[CRIT ]"; break;
+    }
+
+    std::string formattedMessage = std::format("{} {:02}:{:02}:{:02}.{:03} {} ({}:{}) {}", 
+        levelStr, tm.tm_hour, tm.tm_min, tm.tm_sec, ms.count(), 
+        loc.function_name(), loc.file_name(), loc.line(), message);
+
+    std::cout << formattedMessage << std::endl;
+
+    if (s_callback) {
+        s_callback(level, formattedMessage);
+    }
+}
+
+void Logger::Trace(const std::string& message, const std::source_location& loc) {
+    Log(LogLevel::Trace, message, loc);
+}
+
+void Logger::Info(const std::string& message, const std::source_location& loc) {
+    Log(LogLevel::Info, message, loc);
+}
+
+void Logger::Warn(const std::string& message, const std::source_location& loc) {
+    Log(LogLevel::Warning, message, loc);
+}
+
+void Logger::Error(const std::string& message, const std::source_location& loc) {
+    Log(LogLevel::Error, message, loc);
+}
+
+}

@@ -1,0 +1,56 @@
+
+/**
+ * @file LANDevice.hpp
+ * @brief Network printer communication driver.
+ * 
+ * Implements TCP/IP socket communication (typically raw port 9100)
+ * and UDP broadcast discovery for finding printers on the subnet.
+ */
+
+#pragma once
+#include "Device.hpp"
+#include <boost/asio.hpp>
+#include <memory>
+
+namespace Cognitive::HAL {
+
+class LANDevice : public Device {
+public:
+    LANDevice();
+    ~LANDevice() override;
+
+    /**
+     * @brief Connects to a network printer.
+     * @param path Format: "ip_address:port" (e.g., "192.168.1.50:9100").
+     */
+    bool open(const std::string& path) override; 
+    void close() override;
+    [[nodiscard]] bool isOpen() const override;
+
+    bool write(std::span<const uint8_t> data) override;
+    std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) override;
+
+    /**
+     * @brief Clears pending data from the socket buffer.
+     */
+    void purge() override;
+
+    [[nodiscard]] DeviceType getType() const override { return DeviceType::Network; }
+    [[nodiscard]] std::string getPath() const override { return connectionString_; }
+
+    /**
+     * @brief Broadcasts discovery packets to find printers on the local network.
+     * @param timeout Max time to wait for responses.
+     * @return List of discovered DeviceInfo objects.
+     */
+    static std::vector<DeviceInfo> discover(std::chrono::milliseconds timeout);
+
+private:
+    std::unique_ptr<boost::asio::io_context> ioContext_;
+    std::unique_ptr<boost::asio::ip::tcp::socket> socket_;
+    std::string connectionString_;
+    std::string ip_;
+    uint16_t port_ = 9100;
+};
+
+}

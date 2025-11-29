@@ -1,0 +1,176 @@
+
+
+/**
+ * @file Device.hpp
+ * @brief Abstract base class and common definitions for all hardware devices.
+ * 
+ * Defines the interface that all specific hardware drivers (USB, Serial, Network, BT)
+ * must implement to provide a unified API to the business logic.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <span>
+#include <chrono>
+#include <memory>
+#include <map>
+#include <algorithm>
+#include <boost/system/error_code.hpp>
+#include <boost/json.hpp>
+
+namespace Cognitive::HAL {
+
+/**
+ * @enum DeviceType
+ * @brief Identifies the transport layer of the device.
+ */
+enum class DeviceType {
+    Unknown,
+    Serial,
+    Parallel,
+    USB,
+    Network,
+    Bluetooth
+};
+
+/**
+ * @enum ConnectionState
+ * @brief Current lifecycle state of the device connection.
+ */
+enum class ConnectionState {
+    Disconnected,
+    Connecting,
+    Connected,
+    Error
+};
+
+/**
+ * @struct DeviceInfo
+ * @brief Descriptive information about a discovered or connected device.
+ */
+struct DeviceInfo {
+    std::string id;          ///< Unique internal identifier (e.g., "USB:VID:PID:SERIAL")
+    std::string name;        ///< Human readable name (e.g., "Cognitive CXi")
+    std::string path;        ///< OS specific path or address (e.g., "COM3" or "192.168.1.50")
+    std::string description; ///< System description (e.g., "Prolific USB-to-Serial")
+    std::string manufacturer;///< Hardware manufacturer
+    DeviceType type = DeviceType::Unknown;
+    bool connected = false;
+    std::map<std::string, std::string> metadata; ///< Additional properties
+
+    /**
+     * @brief Serializes device info to a JSON object for the frontend.
+     */
+    boost::json::object toJson() const;
+};
+
+/**
+ * @class Device
+ * @brief Interface for all hardware communication drivers.
+ */
+class Device {
+public:
+    virtual ~Device() = default;
+
+    /**
+     * @brief Opens a connection to the device.
+     * @param path Identifier path (e.g., "COM1", IP address, MAC address).
+     * @return true if successful, false otherwise.
+     */
+    virtual bool open(const std::string& path) = 0;
+
+    /**
+     * @brief Closes the active connection.
+     */
+    virtual void close() = 0;
+
+    /**
+     * @brief Checks if the device is currently connected.
+     * @return true if open.
+     */
+    [[nodiscard]] virtual bool isOpen() const = 0;
+
+    /**
+     * @brief Writes binary data to the device.
+     * @param data Span of bytes to write.
+     * @return true on success.
+     */
+    virtual bool write(std::span<const uint8_t> data) = 0;
+
+    /**
+     * @brief Reads binary data from the device.
+     * @param maxBytes Maximum bytes to read.
+     * @param timeout Read timeout.
+     * @return std::vector<uint8_t> Data read (may be empty if timeout/error).
+     */
+    virtual std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) = 0;
+    
+    /**
+     * @brief Flushes output buffers to ensure data is transmitted.
+     */
+    virtual void flush() {}
+
+    /**
+     * @brief Purges input buffers to discard stale data.
+     */
+    virtual void purge() {}
+
+    /**
+     * @brief Performs a hardware-level port reset if supported.
+     * Useful for USB re-enumeration or Serial DTR toggling.
+     * @return true if successful.
+     */
+    virtual bool reset() { return false; }
+
+    /**
+     * @brief Cancels any pending or blocking I/O operation.
+     * 
+     * Safe to call from a different thread to abort a long-running read/write/open.
+     * The blocked operation should return immediately, potentially with partial data or error.
+     */
+    virtual void cancel() {}
+
+    // Convenience methods
+    virtual bool writeString(const std::string& data);
+    virtual std::string readString(size_t maxBytes, std::chrono::milliseconds timeout);
+    virtual std::string readLine(std::chrono::milliseconds timeout);
+
+    /**
+     * @brief Sends a hardware break signal (if supported).
+     * Used principally for bootloader entry on serial-based connections.
+     * @return true if supported and successful.
+     */
+    virtual bool sendBreak() { return false; }
+
+    /**
+     * @brief Sets a transport-specific option.
+     * Allows configuration of baud rate, timeouts, etc., without casting.
+     * @param key Option name (e.g., "baudRate", "parity").
+     * @param value Option value.
+     */
+    virtual void setOption(const std::string& key, const std::string& value) {}
+
+    /**
+     * @brief Gets the type of this device instance.
+     * @return DeviceType enum.
+     */
+    [[nodiscard]] virtual DeviceType getType() const = 0;
+
+    /**
+     * @brief Gets the path used to open this device.
+     * @return Path string.
+     */
+    [[nodiscard]] virtual std::string getPath() const = 0;
+
+    /**
+     * @brief Gets the last error message string.
+     * @return Error string.
+     */
+    [[nodiscard]] virtual std::string getLastError() const;
+
+protected:
+    std::string lastError_;
+};
+
+}

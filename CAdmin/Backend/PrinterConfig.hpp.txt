@@ -1,0 +1,101 @@
+
+/**
+ * @file PrinterConfig.hpp
+ * @brief Definitions of data structures and enums representing printer configuration.
+ * 
+ * Separated from TestEngine.hpp to prevent circular dependencies.
+ */
+
+#pragma once
+#include <string>
+#include <map>
+#include <variant>
+#include <boost/json.hpp>
+
+namespace Cognitive::Business {
+
+/**
+ * @enum ProductLine
+ * @brief Categorizes the printer model family.
+ */
+enum class ProductLine {
+    CI,
+    CXI,
+    DLX,
+    LX,
+    Unknown
+};
+
+// ... (Other Enums PrintMethod, PrintHead, etc. remain unchanged, omitted for brevity in diff but assumed present)
+enum class PrintMethod { DirectThermal, ThermalTransfer };
+enum class PrintHead { Automatic, ROHM_KDxxxxDF, HEC, Kyocera, AOI, ROHM_KFxxxxGD };
+enum class ExitOption { Standard, TearBar, Peeler };
+enum class MemRTC { MB4, MB8, MB8_RTC };
+enum class ConfigurationEmulation { Standard, Custom, Wingman, Gattaca, GattacaCustomComgrph, GattacaCustomDatacard, GattacaCustomSieman1, GattacaCustomSieman2, GattacaCustomHomedepot, GattacaCustomTouchstar, GattacaCustomSunquest, GattacaCustomMeter };
+enum class PowerSupplyCord { US, EU_UK, US_EU_UK, NoCord, NoPowerSupply };
+enum class CommunicationInterface { USB_AB, USB_AB_Network, USB_AB_Network_Serial, USB_AB_Network_Serial_Parallel, USB_AB_Serial, USB_AB_Serial_Bluetooth, USB_AB_Parallel, USB_AB_Serial_Parallel, Serial, Parallel, Serial_Parallel, Serial_Network, Serial_Network_Parallel, USB_AB_Legacy_NoCable, USB_AB_Legacy_SerialCable, USB_AB_Legacy_Adaptor_SerialCable, USB_AB_Legacy_ParallelCable, All };
+enum class LanguageOption { Standard, PCL };
+enum class LocationCode { A, B, C, D, E, G, J, M, N, T, V, DocuShield, Unknown };
+
+/**
+ * @struct PrinterConfig
+ * @brief Comprehensive state object holding all printer configuration.
+ */
+struct PrinterConfig {
+    std::string modelNumber;
+    std::string serialNumber;
+    std::string macAddress;
+    std::string firmwareVersion;
+    
+    ProductLine productLine = ProductLine::Unknown;
+    PrintMethod printMethod = PrintMethod::DirectThermal;
+    int mediaWidth = 2;
+    int printDensity = 200;
+    int printSpeed = 4;
+    ExitOption exitOption = ExitOption::Standard;
+    MemRTC memRTC = MemRTC::MB8_RTC;
+    CommunicationInterface commInterface = CommunicationInterface::USB_AB;
+    PrintHead printHead = PrintHead::Automatic;
+    ConfigurationEmulation configEmulation = ConfigurationEmulation::Standard;
+    PowerSupplyCord powerSupplyCord = PowerSupplyCord::US;
+    LanguageOption languageOption = LanguageOption::Standard;
+    LocationCode locationCode = LocationCode::Unknown;
+
+    std::string customization;
+    
+    // Capability Flags
+    bool isWingman = false;
+    bool isGattaca = false;
+    bool isLX = false;
+    bool isBluetooth = false;
+    bool isNetwork = false;
+    bool isMadeInChina = false;
+    bool isPCL = false;
+    bool isTouchstar = false;
+    bool isMeter = false;
+    bool isSiemens = false;
+    bool isResco = false;
+    bool isHD = false;
+    bool isApple = false;
+    bool isSecurity = false;
+    bool isGWN = false;
+    bool isBS = false;
+    bool isTGModelNumber = false;
+    bool isTDModelNumber = false;
+    bool isMadeByEnnoconnMalaysia = false;
+
+    // Additional Settings Map for dynamic UI properties (auxPower, debugLevel, etc.)
+    std::map<std::string, std::variant<int, bool, std::string>> extraSettings;
+
+    /**
+     * @brief Serializes configuration to JSON object.
+     */
+    boost::json::object toJson() const;
+
+    /**
+     * @brief Deserializes configuration from JSON object.
+     */
+    static PrinterConfig fromJson(const boost::json::object& obj);
+};
+
+}

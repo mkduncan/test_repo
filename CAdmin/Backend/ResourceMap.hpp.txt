@@ -1,0 +1,70 @@
+
+/**
+ * @file ResourceMap.hpp
+ * @brief Mapping logic for firmware, fonts, and CPR files.
+ * 
+ * Replaces `FirmwareMap.java` and `FontMap.java` from the legacy codebase.
+ * Maps printer models and configurations to specific binary resource files
+ * required for manufacturing tests.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <map>
+#include <cstdint>
+#include "PrinterConfig.hpp"
+
+namespace Cognitive::Business {
+
+class ResourceMap {
+public:
+    /**
+     * @brief Determines the correct firmware file based on printer config.
+     * @param config The parsed printer configuration.
+     * @return Filename string.
+     */
+    static std::string getLatestFirmware(const PrinterConfig& config);
+    
+    /**
+     * @brief Returns list of font files to load based on printer config.
+     * @param config The parsed printer configuration.
+     * @return List of filenames.
+     */
+    static std::vector<std::string> getFontList(const PrinterConfig& config);
+    
+    /**
+     * @brief Returns list of CPR (Config) files to load.
+     * @param config The parsed printer configuration.
+     * @return List of filenames.
+     */
+    static std::vector<std::string> getCPRList(const PrinterConfig& config);
+    
+    /**
+     * @brief Retrieves the binary content of a named resource.
+     * @param filename Resource filename.
+     * @return Binary data vector.
+     */
+    static std::vector<uint8_t> getResource(const std::string& filename);
+
+private:
+    // Hardcoded map definitions ported from JAdmin
+    static const std::vector<std::string> FONT_LIST_GENERAL_200;
+    static const std::vector<std::string> FONT_LIST_GENERAL_300;
+    static const std::vector<std::string> FONT_LIST_WINGMAN_200;
+    static const std::vector<std::string> FONT_LIST_WINGMAN_300;
+    static const std::vector<std::string> FONT_LIST_PCL;
+    static const std::vector<std::string> FONT_LIST_ASIAN;
+    static const std::vector<std::string> FONT_LIST_LX_200;
+    static const std::vector<std::string> FONT_LIST_LX_300;
+    
+    // Firmware version mappings
+    static const std::string FW_LX;
+    static const std::string FW_DLX;
+    static const std::string FW_CI;
+    static const std::string FW_CXI;
+    static const std::string FW_PCL;
+    static const std::string FW_TG;
+};
+
+}

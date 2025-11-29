@@ -1,0 +1,180 @@
+
+/**
+ * @file TestEngine.hpp
+ * @brief Manufacturing test state machine and logic.
+ * 
+ * Manages the sequence of 21 distinct manufacturing tests, maintains test state,
+ * handles user prompts via callbacks, and stores test results.
+ */
+
+#pragma once
+#include "PrinterHelper.hpp"
+#include "PrinterConfig.hpp"
+#include <functional>
+#include <string>
+#include <vector>
+#include <map>
+#include <chrono>
+#include <atomic>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <memory>
+
+namespace Cognitive::Business {
+
+enum class TestStatus {
+    Passed, Failed, Skipped, Cancelled, Redo, Aborted, InProgress, NotStarted
+};
+
+enum class TestStep {
+    InitialSetup, FirmwareDownload, PrinterIdentification, FontDownload, CPRDownload, ControlPanel,
+    ConnectionTypes, PrintheadUpDown, ToneCheck, RTCSetup, Calibration, FeedButtonTest,
+    PeelerTest, PrintheadTest, BackupMemoryTest, PrintQualityTest, RibbonWrinkleTest,
+    FinalSettings, SelfTest, SerialNumberLabel, BoxLabel
+};
+
+struct TestConfig {
+    bool skipFirmware = false;
+    bool skipFonts = false;
+    bool skipCPRs = false;
+    bool boardTestMode = false;
+    bool disableLicenses = false;
+    bool promptForFirmware = false;
+    bool autoRun = true;
+};
+
+struct TestResult {
+    std::string testId;
+    TestStatus status;
+    std::string message;
+    std::chrono::system_clock::time_point timestamp;
+};
+
+class TestEngine {
+public:
+    static TestEngine& instance();
+    
+    /**
+     * @brief Sets the target printer ID for testing.
+     * 
+     * Used to resolve the correct Device instance from DeviceManager
+     * when the test sequence begins.
+     * @param id The unique ID of the printer (from DeviceInfo).
+     */
+    void setTargetPrinterId(const std::string& id);
+
+    /**
+     * @brief Sets the printer interface to be tested directly.
+     * Alternatively to setTargetPrinterId, injects a pre-configured helper.
+     */
+    void setPrinter(std::shared_ptr<PrinterHelper> printer);
+
+    // Control
+    void start(const std::string& modelNumber);
+    void stop();
+    void pause();
+    void resume();
+    void abort();
+    void retry();
+    void runNext();
+    
+    /**
+     * @brief Runs a single specific test by ID.
+     * @param testId ID string from UI (e.g., "printer_head").
+     */
+    void runSpecificTest(const std::string& testId);
+
+    // Callbacks for UI interaction
+    using StatusCallback = std::function<void(const std::string&, TestStatus, const std::string&)>;
+    void setStatusCallback(StatusCallback cb);
+    
+    using ProgressCallback = std::function<void(int, const std::string&)>;
+    void setProgressCallback(ProgressCallback cb);
+    
+    using UserPromptCallback = std::function<int(const std::string& message, int style)>;
+    void setUserPromptCallback(UserPromptCallback cb);
+
+    // Getters
+    bool isRunning() const;
+    PrinterConfig& getConfig();
+    TestConfig& getTestOptions();
+    std::vector<TestResult> getResults() const;
+    std::string getResultsJson() const;
+
+    // Firmware Utilities
+    static std::string getCurrentFirmwarePartNumber();
+    static std::string getCurrentFirmwareVersion(const std::string& partNumber);
+    bool firmwareNeedsUpdate(bool askUser, std::string& newFirmwareName);
+
+    // Model Parsing Logic
+    bool parseModelNumber(const std::string& modelNumber);
+
+private:
+    TestEngine();
+    ~TestEngine();
+
+    void runTestSequence();
+    bool establishConnection(int baudRate = 115200);
+    
+    // Individual Test Methods
+    TestStatus doInitialSetup();
+    TestStatus doFirmwareDownload();
+    TestStatus doPrinterIdentification(bool getNewId);
+    // ... (Other test steps) ... 
+    TestStatus doFontDownload();
+    TestStatus doCPRDownload();
+    TestStatus doControlPanel();
+    TestStatus doConnectionTypes();
+    TestStatus doPrintHeadUpDown();
+    TestStatus doToneCheck();
+    TestStatus doRTCSetup();
+    TestStatus doCalibration();
+    TestStatus doFeedButtonTest();
+    TestStatus doPeelerTest();
+    TestStatus doPrintHeadTest();
+    TestStatus doBackupMemoryTest(bool powerCycle);
+    TestStatus doPrintQuality();
+    TestStatus doRibbonWrinkle();
+    TestStatus doFinalSettings();
+    TestStatus doSelfTest();
+    TestStatus doSerialNumberLabel();
+    TestStatus doBoxLabel();
+
+    // Registry for dynamic lookup
+    std::map<std::string, std::function<TestStatus()>> testRegistry_;
+    void registerTests();
+
+    // Internal Helpers
+    bool parseDLX_LXModelNumber(const std::string& mn);
+    bool parseCModelNumber(const std::string& mn);
+    bool convertTGModelNumber(const std::string& mn);
+    TestStatus loadFonts(const std::string& fontPackage, const std::vector<std::string>& fontList);
+    bool loadCPRFile(const std::string& resourceName);
+    void enableBoardTestMode();
+    bool sendLicenseKey(const std::string& key);
+    bool constructDLXSerialNumberLabel(std::string& cpl);
+    bool constructCSerialNumberLabel(std::string& cpl);
+    bool constructDLXBoxLabel(std::string& cpl);
+    bool constructCBoxLabel(std::string& cpl);
+    std::string getMonthYear();
+
+    std::string targetPrinterId_;
+    std::shared_ptr<PrinterHelper> printer_;
+    std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
+    std::atomic<bool> aborted_{false};
+    std::thread workerThread_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    
+    PrinterConfig config_;
+    TestConfig testOptions_;
+    std::vector<TestResult> results_;
+    
+    StatusCallback statusCb_;
+    ProgressCallback progressCb_;
+    UserPromptCallback promptCb_;
+};
+
+}

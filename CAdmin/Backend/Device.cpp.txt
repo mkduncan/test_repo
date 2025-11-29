@@ -1,0 +1,70 @@
+#include "Device.hpp"
+#include "Obfuscation.hpp"
+#include <vector>
+#include <string>
+
+namespace Cognitive::HAL {
+
+boost::json::object DeviceInfo::toJson() const {
+    boost::json::object obj;
+    obj[OBF("id")] = id;
+    obj[OBF("name")] = name;
+    obj[OBF("path")] = path;
+    obj[OBF("description")] = description;
+    obj[OBF("manufacturer")] = manufacturer;
+    
+    std::string typeStr;
+    switch (type) {
+        case DeviceType::Serial: typeStr = OBF("Serial"); break;
+        case DeviceType::Parallel: typeStr = OBF("Parallel"); break;
+        case DeviceType::USB: typeStr = OBF("USB"); break;
+        case DeviceType::Network: typeStr = OBF("Network"); break;
+        case DeviceType::Bluetooth: typeStr = OBF("Bluetooth"); break;
+        default: typeStr = OBF("Unknown"); break;
+    }
+    obj[OBF("type")] = typeStr;
+    obj[OBF("connected")] = connected;
+    
+    boost::json::object metaObj;
+    for (const auto& [key, value] : metadata) {
+        metaObj[key] = value;
+    }
+    obj[OBF("metadata")] = metaObj;
+    
+    return obj;
+}
+
+std::string Device::getLastError() const {
+    return lastError_;
+}
+
+bool Device::writeString(const std::string& data) {
+    if (data.empty()) return true;
+    std::vector<uint8_t> bytes(data.begin(), data.end());
+    return write(std::span<const uint8_t>(bytes));
+}
+
+std::string Device::readString(size_t maxBytes, std::chrono::milliseconds timeout) {
+    std::vector<uint8_t> buffer = read(maxBytes, timeout);
+    if (buffer.empty()) return "";
+    return std::string(buffer.begin(), buffer.end());
+}
+
+std::string Device::readLine(std::chrono::milliseconds timeout) {
+    std::string line;
+    auto startTime = std::chrono::steady_clock::now();
+    
+    while (std::chrono::steady_clock::now() - startTime < timeout) {
+        std::vector<uint8_t> byte = read(1, std::chrono::milliseconds(10));
+        if (!byte.empty()) {
+            char c = static_cast<char>(byte[0]);
+            line += c;
+            if (c == '\n') break;
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+    return line;
+}
+
+}

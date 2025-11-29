@@ -1,0 +1,267 @@
+#include "PrinterHelper.hpp"
+#include "CPLParser.hpp"
+#include "Debug.hpp"
+#include "Obfuscation.hpp"
+#include <sstream>
+#include <thread>
+#include <vector>
+#include <string>
+
+namespace Cognitive::Business {
+
+PrinterHelper::PrinterHelper(std::shared_ptr<HAL::Device> device) : printer_(device) {}
+
+std::shared_ptr<HAL::Device> PrinterHelper::getDevice() const {
+    return printer_;
+}
+
+bool PrinterHelper::isConnected() const {
+    return printer_ && printer_->isOpen();
+}
+
+void PrinterHelper::send(const std::string& command) {
+    if (isConnected()) {
+        printer_->writeString(command);
+        Debug::Logger::Trace(OBF("Sent: ") + command);
+    }
+}
+
+void PrinterHelper::send(const std::vector<uint8_t>& data) {
+    if (isConnected()) {
+        printer_->write(data);
+    }
+}
+
+std::string PrinterHelper::commandWaitResponse(const std::string& command, std::chrono::milliseconds timeout) {
+    if (!isConnected()) return "";
+    
+    send(command);
+    
+    std::string startPattern, endPattern;
+    CPLParser::getResponsePattern(command, startPattern, endPattern);
+    
+    std::string accumulatedResponse;
+    auto startTime = std::chrono::steady_clock::now();
+    
+    while (std::chrono::steady_clock::now() - startTime < timeout) {
+        std::string chunk = printer_->readString(1024, std::chrono::milliseconds(100));
+        if (!chunk.empty()) {
+            accumulatedResponse += chunk;
+            if (endPattern.empty() && !accumulatedResponse.empty()) break;
+            if (!endPattern.empty() && CPLParser::matchesPattern(accumulatedResponse, endPattern)) break;
+        }
+    }
+    
+    Debug::Logger::Trace(OBF("Recv: ") + accumulatedResponse);
+    return accumulatedResponse;
+}
+
+std::string PrinterHelper::getVariable(const std::string& name) {
+    std::string cmd = OBF("!0 0 0 0\nVARIABLE ") + name + OBF(" ?\nEND\n");
+    std::string resp = commandWaitResponse(cmd);
+    return CPLParser::getResponseValue(resp, cmd);
+}
+
+void PrinterHelper::setVariable(const std::string& name, const std::string& value) {
+    std::string cmd = OBF("!0 0 0 0\nVARIABLE ") + name + " " + value + OBF("\nVARIABLE WRITE\nEND\n");
+    send(cmd);
+}
+
+std::string PrinterHelper::setAndGetVariable(const std::string& name, const std::string& value) {
+    setVariable(name, value);
+    return getVariable(name);
+}
+
+std::string PrinterHelper::queryStatus() {
+    return commandWaitResponse(OBF("!QS\n"));
+}
+
+std::string PrinterHelper::queryRevision() {
+    return commandWaitResponse(OBF("!QR\n"));
+}
+
+std::string PrinterHelper::setDarkness(int value) {
+    return OBF("!0 0 0 0\nVARIABLE DARKNESS ") + std::to_string(value) + OBF("\nVARIABLE WRITE\nEND\n");
+}
+
+std::string PrinterHelper::setSpeed(int value) {
+    return OBF("!0 0 0 0\nVARIABLE PRINT_SPEED ") + std::to_string(value) + OBF("\nVARIABLE WRITE\nEND\n");
+}
+
+std::string PrinterHelper::calibrate(int type) {
+    return OBF("!CAL ") + std::to_string(type) + "\n";
+}
+
+std::string PrinterHelper::variableReset() {
+    return OBF("!0 0 0 0\nVARIABLE RESET\nEND\n");
+}
+
+std::string PrinterHelper::factoryRestore() {
+    return OBF("!0 0 0 0\nVARIABLE FACTORY_RESTORE\nEND\n");
+}
+
+std::string PrinterHelper::feed(int lines) {
+    return OBF("!F ") + std::to_string(lines) + "\n";
+}
+
+void PrinterHelper::printTestLabel(const PrinterConfig& config, const std::string& tof, const std::string& shiftLeft, const std::string& message) {
+    std::string label = OBF("! 0 100 200 1\nSTRING 12x16 10 10 TEST LABEL\n");
+    if (!tof.empty()) label += OBF("STRING 12x16 10 40 TOF: ") + tof + "\n";
+    if (!shiftLeft.empty()) label += OBF("STRING 12x16 10 70 SHIFT: ") + shiftLeft + "\n";
+    if (!message.empty()) label += OBF("STRING 12x16 10 100 ") + message + "\n";
+    label += OBF("END\n");
+    send(label);
+}
+
+void PrinterHelper::printSelfTestLabel() {
+    send(OBF("!PRINT TESTLABEL\n"));
+}
+
+void PrinterHelper::cancelPrint() {
+    send(OBF("!ABORT\n"));
+}
+
+std::string PrinterHelper::getModelNumber() {
+    std::string resp = commandWaitResponse(OBF("!SHOW MODELNUMBER\n"));
+    return CPLParser::clean(resp); 
+}
+
+std::string PrinterHelper::getSerialNumber() {
+    std::string resp = commandWaitResponse(OBF("!SHOW SERIALNUMBER\n"));
+    return CPLParser::clean(resp);
+}
+
+std::string PrinterHelper::getFirmwareVersion() {
+    return queryRevision();
+}
+
+std::string PrinterHelper::getMACAddress() {
+    std::string resp = commandWaitResponse(OBF("!SHOW MAC\n"));
+    return CPLParser::clean(resp);
+}
+
+bool PrinterHelper::isReady() {
+    std::string status = queryStatus();
+    PrinterStatus s;
+    s.parseFromResponse(status);
+    return s.ready;
+}
+
+int PrinterHelper::getPrintHeadTemperature() {
+    std::string resp = commandWaitResponse(OBF("!SHOW AD\n"));
+    auto readings = getAdcReadings();
+    return readings[OBF("HeadTemp")];
+}
+
+PrintStatistics PrinterHelper::getPrintStatistics() {
+    PrintStatistics stats;
+    std::string inch = commandWaitResponse(OBF("!SHOW INCHCOUNT\n"));
+    try {
+        stats.inchCount = std::stoi(CPLParser::clean(inch));
+    } catch(...) {}
+    return stats;
+}
+
+std::string PrinterHelper::queryVariable(const std::string& name) {
+    return getVariable(name);
+}
+
+IndexSensorData PrinterHelper::parseIndexQuery(const std::string& response) {
+    IndexSensorData data;
+    std::stringstream ss(response);
+    std::string segment;
+    std::vector<std::string> parts;
+    while(std::getline(ss, segment, ' ')) {
+        parts.push_back(CPLParser::clean(segment));
+    }
+    if (parts.size() >= 6) {
+        data.feedType = parts[0];
+        data.printMode = parts[1];
+        try { data.reflective = std::stoi(parts[2]); } catch(...) {}
+        try { data.transmissive = std::stoi(parts[3]); } catch(...) {}
+        try { data.gain = std::stoi(parts[4]); } catch(...) {}
+        try { data.whiteLevel = std::stoi(parts[5]); } catch(...) {}
+    }
+    return data;
+}
+
+IndexSensorData PrinterHelper::getMediaSensors() {
+    std::string resp = commandWaitResponse(OBF("!QI\n"));
+    return parseIndexQuery(resp);
+}
+
+std::vector<std::string> PrinterHelper::getLabelFormats() {
+    std::string resp = commandWaitResponse(OBF("!LS\n"));
+    auto objects = CPLParser::parseObjectList(resp);
+    std::vector<std::string> formats;
+    for (const auto& obj : objects) {
+        if (obj.type == OBF("Format data")) {
+            formats.push_back(obj.name);
+        }
+    }
+    return formats;
+}
+
+std::vector<CPLParser::ObjectInfo> PrinterHelper::getObjectList() {
+    std::string resp = commandWaitResponse(OBF("!LS\n"));
+    return CPLParser::parseObjectList(resp);
+}
+
+std::string PrinterHelper::queryConfiguration(const std::string& key) {
+    return getVariable(key);
+}
+
+std::vector<uint8_t> PrinterHelper::dumpMemory(uint32_t address, uint32_t length) {
+    std::string cmd = OBF("!DUMP MEMORY ") + std::to_string(length) + " " + std::to_string(address) + "\n";
+    std::string resp = commandWaitResponse(cmd);
+    std::vector<uint8_t> data;
+    for (char c : resp) data.push_back(static_cast<uint8_t>(c));
+    return data;
+}
+
+std::vector<std::string> PrinterHelper::getEventLog() {
+    std::string resp = commandWaitResponse(OBF("!SHOW EVENTLOG\n"));
+    std::vector<std::string> log;
+    std::stringstream ss(resp);
+    std::string line;
+    while(std::getline(ss, line)) log.push_back(CPLParser::clean(line));
+    return log;
+}
+
+void PrinterHelper::clearEventLog() {
+    send(OBF("!ERASE EVENTLOG\n"));
+}
+
+std::map<std::string, int> PrinterHelper::getAdcReadings() {
+    std::string resp = commandWaitResponse(OBF("!SHOW AD\n"));
+    std::map<std::string, int> readings;
+    std::regex adRegex(OBF("(\\w+):\\s*(\\d+)"));
+    auto words_begin = std::sregex_iterator(resp.begin(), resp.end(), adRegex);
+    auto words_end = std::sregex_iterator();
+    for (std::sregex_iterator i = words_begin; i != words_end; ++i) {
+        std::smatch match = *i;
+        readings[match[1]] = std::stoi(match[2]);
+    }
+    return readings;
+}
+
+void PrinterHelper::setWifiConfig(const WifiConfig& config) {
+    setVariable(OBF("ETHERNET IP"), config.ip);
+    setVariable(OBF("ETHERNET NETMASK"), config.mask);
+    setVariable(OBF("ETHERNET GATEWAY"), config.gateway);
+    setVariable(OBF("ETHERNET SSID"), config.ssid); 
+}
+
+void PrinterHelper::setBluetoothConfig(const BluetoothConfig& config) {
+    setVariable(OBF("BLUETOOTH DEVICENAME"), config.name);
+    setVariable(OBF("BLUETOOTH DEVICEPIN"), config.pin);
+}
+
+void PrinterHelper::printGraphic(const std::vector<uint8_t>& pcxData, int x, int y, int width, int height) {
+    std::string cmd = OBF("GRAPHIC PCX ") + std::to_string(x) + " " + std::to_string(y) + "\n";
+    send(cmd);
+    send(pcxData);
+    send(OBF("\nEND\n"));
+}
+
+}

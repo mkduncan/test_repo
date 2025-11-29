@@ -1,0 +1,40 @@
+/**
+ * @file Base64.hpp
+ * @brief Base64 encoding and decoding utilities.
+ * 
+ * Essential for transmitting binary data (like images or firmware) through
+ * the JSON-RPC bridge to the WebView.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <span>
+#include <cstdint>
+
+namespace Cognitive::Utilities {
+
+/**
+ * @class Base64
+ * @brief Static utility class for Base64 operations.
+ */
+class Base64 {
+public:
+    /**
+     * @brief Encodes binary data into a Base64 string.
+     * 
+     * @param data Input binary data.
+     * @return std::string Base64 encoded string.
+     */
+    static std::string encode(std::span<const uint8_t> data);
+
+    /**
+     * @brief Decodes a Base64 string into binary data.
+     * 
+     * @param encoded Base64 encoded string.
+     * @return std::vector<uint8_t> Decoded binary data.
+     */
+    static std::vector<uint8_t> decode(const std::string& encoded);
+};
+
+}

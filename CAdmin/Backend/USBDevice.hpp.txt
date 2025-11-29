@@ -1,0 +1,59 @@
+
+
+/**
+ * @file USBDevice.hpp
+ * @brief Native USB communication driver.
+ * 
+ * Implements USB bulk transfer communication. On Windows, this should use
+ * native Win32 APIs or WinUSB. On Linux/macOS, it uses libusb.
+ */
+
+#pragma once
+#include "Device.hpp"
+#include <memory>
+
+namespace Cognitive::HAL {
+
+class USBDevice : public Device {
+public:
+    USBDevice();
+    ~USBDevice() override;
+
+    /**
+     * @brief Opens a USB device.
+     * @param path Identifier path. Can be a native OS path or a custom ID string.
+     */
+    bool open(const std::string& path) override;
+    void close() override;
+    [[nodiscard]] bool isOpen() const override;
+
+    bool write(std::span<const uint8_t> data) override;
+    std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) override;
+
+    /**
+     * @brief Issues a USB Port Reset.
+     * Used to force re-enumeration, typically when entering bootloader.
+     */
+    bool reset() override;
+
+    /**
+     * @brief Clears the USB BULK IN pipe.
+     */
+    void purge() override;
+
+    [[nodiscard]] DeviceType getType() const override { return DeviceType::USB; }
+    [[nodiscard]] std::string getPath() const override { return devicePath_; }
+
+    /**
+     * @brief Enumerates connected supported USB printers.
+     * @return List of device info structures.
+     */
+    static std::vector<DeviceInfo> enumerate();
+
+private:
+    struct Impl; // PIMPL to hide platform specific headers (windows.h vs libusb.h)
+    std::unique_ptr<Impl> pImpl_;
+    std::string devicePath_;
+};
+
+}

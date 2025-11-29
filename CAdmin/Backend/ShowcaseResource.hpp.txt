@@ -1,0 +1,36 @@
+/**
+ * @file ShowcaseResource.hpp
+ * @brief Resource loader for the UI frontend.
+ * 
+ * Handles loading the `Showcase.html` content, either from embedded memory
+ * (production) or from disk (development), ensuring the UI is always available.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <cstdint>
+
+namespace Cognitive::Resource {
+
+class ShowcaseResource {
+public:
+    /**
+     * @brief Gets the main HTML content for the WebView.
+     * @return String containing the complete HTML.
+     */
+    static std::string getHtmlContent();
+    
+    /**
+     * @brief Retrieves generic binary resources by name.
+     * @param resourceName Name/ID of resource.
+     * @return Binary vector.
+     */
+    static std::vector<uint8_t> getResource(const std::string& resourceName);
+
+private:
+    // Embedded fallback HTML for standalone execution
+    static const std::string FALLBACK_HTML;
+};
+
+}

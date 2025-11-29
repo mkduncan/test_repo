@@ -1,0 +1,240 @@
+#include "CPLParser.hpp"
+#include "Obfuscation.hpp"
+#include <algorithm>
+#include <sstream>
+#include <iostream>
+#include <regex>
+
+namespace Cognitive::Business {
+
+const std::string CPLParser::COMPRESSED_BITMAP_FONT = OBF("Compressed bitmap font");
+
+std::string CPLParser::clean(const std::string& str) {
+    std::string s = str;
+    std::replace(s.begin(), s.end(), '\n', ' ');
+    std::replace(s.begin(), s.end(), '\r', ' ');
+    
+    size_t start = s.find_first_not_of(" \t");
+    if (start == std::string::npos) return "";
+    size_t end = s.find_last_not_of(" \t");
+    return s.substr(start, end - start + 1);
+}
+
+std::string CPLParser::getMatch(const std::string& str, const std::string& pattern) {
+    try {
+        std::regex re(pattern);
+        std::smatch match;
+        if (std::regex_search(str, match, re)) {
+            return match.str();
+        }
+    } catch (...) { }
+    return "";
+}
+
+std::string CPLParser::getResponseValue(const std::string& response, const std::string& command) {
+    std::string retStr;
+    std::string tmpCmd = command;
+    std::replace(tmpCmd.begin(), tmpCmd.end(), '\n', ' ');
+    std::replace(tmpCmd.begin(), tmpCmd.end(), '\r', ' ');
+    
+    std::string upperCmd = tmpCmd;
+    std::transform(upperCmd.begin(), upperCmd.end(), upperCmd.begin(), ::toupper);
+
+    std::string cleanResponse = clean(response);
+
+    if (cleanResponse.find('=') != std::string::npos) {
+        if (upperCmd.find(OBF("VARIABLE")) != std::string::npos || upperCmd.find(OBF("V ")) != std::string::npos) {
+             std::string varName = getVariableName(tmpCmd);
+             size_t k = response.find(varName);
+             if (k != std::string::npos) {
+             }
+        }
+
+        size_t i = cleanResponse.find('=');
+        retStr = cleanResponse.substr(i + 1);
+    } else {
+        if (upperCmd.find(OBF("INDEX")) != std::string::npos || upperCmd.find(OBF("!CAL")) != std::string::npos) {
+             size_t cPos = response.find('C');
+             if (cPos != std::string::npos) {
+                 retStr = response.substr(cPos);
+             } else {
+                 retStr = response;
+             }
+        } else {
+            retStr = response;
+        }
+    }
+    return clean(retStr);
+}
+
+std::string CPLParser::getVariableName(const std::string& command) {
+    std::string upper = command;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+    
+    if (upper.find(OBF("VARIABLE")) != std::string::npos || upper.find(OBF("V ")) != std::string::npos) {
+        size_t i = upper.find(OBF("VARIABLE"));
+        if (i != std::string::npos) {
+            i = upper.find('E', i) + 1; 
+        } else {
+            i = upper.find('V') + 1;
+        }
+        
+        size_t j = upper.find('?', i);
+        if (j == std::string::npos) j = upper.length();
+        
+        return clean(upper.substr(i, j - i));
+    }
+    return "";
+}
+
+void CPLParser::getResponsePattern(const std::string& command, std::string& patternStart, std::string& patternEnd) {
+    std::string upper = command;
+    std::transform(upper.begin(), upper.end(), upper.begin(), ::toupper);
+    upper = clean(upper);
+
+    patternEnd = ""; 
+
+    if (upper.find(OBF("VARIABLE")) != std::string::npos || upper.find(OBF("V ")) != std::string::npos) {
+        if (upper.find(OBF("TIME")) != std::string::npos) {
+            patternStart = OBF("(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday).*");
+        } else if (upper.find(OBF("AUX_POWER")) != std::string::npos) {
+            patternStart = OBF(".*AUXPOWER.*");
+        } else if (upper.find(OBF("INDEX")) != std::string::npos) {
+            patternStart = OBF(".*INDEX.*");
+        } else {
+            std::string varName = getVariableName(upper);
+            patternStart = ".*" + varName + ".*";
+        }
+    } else if (upper.find(OBF("!CAL")) != std::string::npos) {
+        patternStart = OBF(".*C[012]3*[FP]");
+    } else if (upper.find(OBF("SHOW MODELNUMBER")) != std::string::npos) {
+        patternStart = OBF("Model Number.*");
+    } else if (upper.find(OBF("SHOW SERIALNUMBER")) != std::string::npos) {
+        patternStart = OBF(".*Serial Number.*");
+    } else if (upper.find(OBF("!QR")) != std::string::npos) {
+        patternStart = OBF(".*195-...-....*");
+    } else if (upper.find(OBF("!LS")) != std::string::npos) {
+        patternStart = OBF(".*,.*,.*,.*,.*,.*");
+        patternEnd = OBF(".*END-OF-LIST.*");
+    } else {
+        patternStart = ".*";
+    }
+}
+
+std::map<std::string, std::string> CPLParser::parseStatusResponse(const std::string& response) {
+    PrinterStatus status;
+    status.parseFromResponse(response);
+    std::map<std::string, std::string> m;
+    m["Ready"] = status.ready ? "true" : "false";
+    m["PaperOut"] = status.paperOut ? "true" : "false";
+    m["HeadUp"] = status.headUp ? "true" : "false";
+    m["RibbonOut"] = status.ribbonOut ? "true" : "false";
+    m["Paused"] = status.paused ? "true" : "false";
+    m["Error"] = status.error ? "true" : "false";
+    m["Raw"] = status.rawStatus;
+    return m;
+}
+
+bool PrinterStatus::parseFromResponse(const std::string& response) {
+    rawStatus = response;
+    std::regex statusRegex("[RoOUP](\\d{5})");
+    std::smatch match;
+    if (std::regex_search(response, match, statusRegex)) {
+        char statusChar = response[match.position()];
+        std::string flags = match[1];
+
+        ready = (statusChar == 'R' || statusChar == 'o' || statusChar == 'O');
+        paused = (statusChar == 'P');
+        
+        if (flags.length() >= 5) {
+            paperOut = (flags[0] != '0');
+            headUp = (flags[1] != '0');
+            ribbonOut = (flags[2] != '0');
+            error = (flags[4] != '0');
+        }
+        return true;
+    }
+    return false;
+}
+
+std::string PrinterStatus::toString() const {
+    std::string s = ready ? "Ready" : (paused ? "Paused" : "Busy/Error");
+    if (paperOut) s += ", Paper Out";
+    if (headUp) s += ", Head Up";
+    if (ribbonOut) s += ", Ribbon Out";
+    if (error) s += ", General Error";
+    return s;
+}
+
+std::string CPLParser::getTypeDescription(const std::string& type) {
+    int iType = 0;
+    try { iType = std::stoi(type); } catch(...) { return OBF("Unknown"); }
+    
+    switch(iType) {
+        case 0: return OBF("Unused");
+        case 1: return OBF("Format data");
+        case 2: return OBF("Vector font");
+        case 9: return COMPRESSED_BITMAP_FONT;
+        case 35: return OBF("Object");
+        default: return OBF("Type ") + std::to_string(iType);
+    }
+}
+
+std::string CPLParser::getStorageDescription(const std::string& storage) {
+    if (storage == "0") return OBF("RAM");
+    if (storage == "3") return OBF("Flash");
+    return storage;
+}
+
+std::vector<CPLParser::ObjectInfo> CPLParser::parseObjectList(const std::string& response) {
+    std::vector<ObjectInfo> list;
+    std::istringstream stream(response);
+    std::string line;
+    
+    while(std::getline(stream, line)) {
+        if (line.find(OBF("END-OF-LIST")) != std::string::npos) break;
+        
+        std::vector<std::string> parts;
+        std::stringstream ss(line);
+        std::string segment;
+        while(std::getline(ss, segment, ',')) {
+            parts.push_back(clean(segment));
+        }
+        
+        if (parts.size() >= 6) {
+            ObjectInfo info;
+            info.storage = getStorageDescription(parts[0]);
+            info.type = getTypeDescription(parts[1]);
+            info.name = parts[2];
+            try { info.size = std::stoul(parts[3]); } catch(...) { info.size = 0; }
+            info.description = parts[5];
+            list.push_back(info);
+        }
+    }
+    return list;
+}
+
+char CPLParser::calculateCRC(uint8_t c, char calc_crc) {
+    static const uint16_t crc_tbl1[] = {0x0000, 0xcc01, 0xd801, 0x1400, 0xf001, 0x3c00, 0x2800, 0xe401, 0xa001, 0x6c00, 0x7800, 0xb401, 0x5000, 0x9c01, 0x8801, 0x4400};
+    static const uint16_t crc_tbl2[] = {0x0000, 0xc0c1, 0xc181, 0x0140, 0xc301, 0x03c0, 0x0280, 0xc241, 0xc601, 0x06c0, 0x0780, 0xc741, 0x0500, 0xc5c1, 0xc481, 0x0440};
+    
+    uint8_t tbl1_idx = (uint8_t)(((c ^ calc_crc) & 0xf0) >> 4);
+    uint8_t tbl2_idx = (uint8_t)((c ^ calc_crc) & 0x0f);
+    
+    uint16_t crc = (calc_crc >> 8) & 0x00ff;
+    crc = crc ^ crc_tbl1[tbl1_idx] ^ crc_tbl2[tbl2_idx];
+    
+    return (char)crc;
+}
+
+std::string CPLParser::getCRC(const std::vector<uint8_t>& data) {
+    char crc = 0;
+    for (uint8_t b : data) {
+        crc = calculateCRC(b, crc);
+    }
+    std::stringstream ss;
+    ss << std::hex << (int)(crc & 0xFF);
+    return ss.str();
+}
+
+}

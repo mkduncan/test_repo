@@ -1,0 +1,60 @@
+#include "Utility.hpp"
+#include <thread>
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <format>
+#include <iomanip>
+
+namespace Cognitive::HAL::Utility {
+
+bool BlockThread(std::chrono::milliseconds duration) {
+    std::this_thread::sleep_for(duration);
+    return true;
+}
+
+bool ExecuteWithTimeout(std::chrono::milliseconds timeout, std::function<void()> func) {
+    if (timeout.count() == 0) {
+        func();
+        return true;
+    }
+
+    std::promise<void> promise;
+    auto future = promise.get_future();
+    
+    std::thread t([&promise, func]() {
+        try {
+            func();
+            promise.set_value();
+        } catch (...) {
+            promise.set_exception(std::current_exception());
+        }
+    });
+
+    if (future.wait_for(timeout) == std::future_status::timeout) {
+        t.detach(); // Danger: thread continues running. In production, need cancellation token.
+        return false;
+    }
+
+    t.join();
+    try {
+        future.get();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::span<std::byte> StringToByteSpan(std::string& str) {
+    return std::span<std::byte>(reinterpret_cast<std::byte*>(str.data()), str.size());
+}
+
+std::span<const std::byte> StringToConstByteSpan(const std::string& str) {
+    return std::span<const std::byte>(reinterpret_cast<const std::byte*>(str.data()), str.size());
+}
+
+std::string FormatError(const std::string& context, int errorCode) {
+    return std::format("{}: Error Code {}", context, errorCode);
+}
+
+}

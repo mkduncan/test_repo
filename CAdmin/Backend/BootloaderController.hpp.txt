@@ -1,0 +1,64 @@
+
+/**
+ * @file BootloaderController.hpp
+ * @brief Manages interaction with the printer's bootloader for firmware recovery.
+ * 
+ * Handles the specific break-signal sequences and raw binary transfer protocols
+ * required when the main firmware is corrupted or during manufacturing.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <memory>
+#include <functional>
+#include <chrono>
+#include "Device.hpp"
+
+namespace Cognitive::Business {
+
+class BootloaderController {
+public:
+    explicit BootloaderController(std::shared_ptr<HAL::Device> device);
+    
+    /**
+     * @brief Attempts to enter bootloader mode via break signal or command sequence.
+     * @return true if successful.
+     */
+    bool enterRecoveryMode();
+
+    /**
+     * @brief Waits for the device to disconnect and reconnect (re-enumerate).
+     * 
+     * Essential during firmware updates or bootloader entry where the device 
+     * resets and might change USB handles. Requires querying DeviceManager 
+     * to find the new handle based on the cached device ID.
+     * 
+     * @param timeout Max time to wait for the device to come back online.
+     * @return true if reconnected successfully.
+     */
+    bool waitForReconnection(std::chrono::milliseconds timeout = std::chrono::seconds(10));
+
+    /**
+     * @brief Checks if the device is currently in bootloader mode.
+     */
+    bool checkStatus();
+
+    /**
+     * @brief Flashes firmware binary directly to the bootloader.
+     * @param data Binary firmware image.
+     * @param progressCb Callback for progress (0-100).
+     */
+    bool flashFirmwareRaw(const std::vector<uint8_t>& data, std::function<void(int)> progressCb);
+
+    /**
+     * @brief Sends a raw command to the bootloader.
+     */
+    bool sendCommand(const std::string& cmd);
+
+private:
+    std::shared_ptr<HAL::Device> device_;
+    std::string targetDeviceId_; ///< Stored ID to find device after reboot/re-enumeration
+};
+
+}

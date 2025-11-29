@@ -1,0 +1,142 @@
+#include "LANDevice.hpp"
+#include "Obfuscation.hpp"
+#include <iostream>
+#include <future>
+
+namespace Cognitive::HAL {
+
+LANDevice::LANDevice() : ioContext_(std::make_unique<boost::asio::io_context>()) {
+    socket_ = std::make_unique<boost::asio::ip::tcp::socket>(*ioContext_);
+}
+
+LANDevice::~LANDevice() {
+    close();
+}
+
+bool LANDevice::open(const std::string& path) {
+    connectionString_ = path;
+    lastError_.clear();
+    
+    try {
+        size_t colonPos = path.find(':');
+        if (colonPos == std::string::npos) {
+            ip_ = path;
+            port_ = 9100;
+        } else {
+            ip_ = path.substr(0, colonPos);
+            port_ = static_cast<uint16_t>(std::stoi(path.substr(colonPos + 1)));
+        }
+        
+        boost::asio::ip::tcp::resolver resolver(*ioContext_);
+        boost::asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(ip_, std::to_string(port_));
+        
+        boost::asio::connect(*socket_, endpoints);
+        return true;
+    } catch (const std::exception& e) {
+        lastError_ = e.what();
+        return false;
+    }
+}
+
+void LANDevice::close() {
+    if (socket_ && socket_->is_open()) {
+        boost::system::error_code ec;
+        socket_->close(ec);
+    }
+}
+
+bool LANDevice::isOpen() const {
+    return socket_ && socket_->is_open();
+}
+
+bool LANDevice::write(std::span<const uint8_t> data) {
+    if (!isOpen()) return false;
+    
+    try {
+        boost::asio::write(*socket_, boost::asio::buffer(data.data(), data.size()));
+        return true;
+    } catch (const std::exception& e) {
+        lastError_ = e.what();
+        return false;
+    }
+}
+
+std::vector<uint8_t> LANDevice::read(size_t maxBytes, std::chrono::milliseconds timeout) {
+    if (!isOpen()) return {};
+    
+    std::vector<uint8_t> buffer(maxBytes);
+    size_t bytesRead = 0;
+    
+    try {
+        std::future<size_t> readFuture = std::async(std::launch::async, [this, &buffer, maxBytes]() {
+             boost::system::error_code ec;
+             return socket_->read_some(boost::asio::buffer(buffer), ec);
+        });
+
+        if (readFuture.wait_for(timeout) == std::future_status::ready) {
+            bytesRead = readFuture.get();
+        } else {
+            socket_->cancel();
+            try { bytesRead = readFuture.get(); } catch(...) {}
+        }
+
+        buffer.resize(bytesRead);
+        return buffer;
+    } catch (const std::exception& e) {
+        lastError_ = e.what();
+        return {};
+    }
+}
+
+void LANDevice::purge() {
+    try {
+        if (socket_->available() > 0) {
+            std::vector<uint8_t> trash(socket_->available());
+            socket_->read_some(boost::asio::buffer(trash));
+        }
+    } catch (...) {}
+}
+
+std::vector<DeviceInfo> LANDevice::discover(std::chrono::milliseconds timeout) {
+    std::vector<DeviceInfo> devices;
+    boost::asio::io_context io;
+    boost::asio::ip::udp::socket socket(io);
+    
+    try {
+        socket.open(boost::asio::ip::udp::v4());
+        socket.set_option(boost::asio::socket_base::broadcast(true));
+        
+        // CPL Discovery Packet
+        std::string discoveryCmd = OBF("!0 0 0 0\r\n!DISCOVER\r\nEND\r\n");
+        boost::asio::ip::udp::endpoint broadcastEndpoint(boost::asio::ip::address_v4::broadcast(), 9100);
+        
+        socket.send_to(boost::asio::buffer(discoveryCmd), broadcastEndpoint);
+        
+        std::vector<uint8_t> recvBuffer(1024);
+        boost::asio::ip::udp::endpoint senderEndpoint;
+        
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < timeout) {
+            if (socket.available()) {
+                 size_t len = socket.receive_from(boost::asio::buffer(recvBuffer), senderEndpoint);
+                 if (len > 0) {
+                     DeviceInfo info;
+                     info.type = DeviceType::Network;
+                     info.path = senderEndpoint.address().to_string() + ":9100";
+                     info.name = "Network Printer"; 
+                     info.id = "NET:" + info.path;
+                     info.description = OBF("Cognitive Network Printer");
+                     info.manufacturer = OBF("CognitiveTPG");
+                     devices.push_back(info);
+                 }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+        
+    } catch (...) {
+    }
+    
+    return devices;
+}
+
+}

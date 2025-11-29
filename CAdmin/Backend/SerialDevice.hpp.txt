@@ -1,0 +1,102 @@
+
+
+/**
+ * @file SerialDevice.hpp
+ * @brief Legacy COM/Serial port communication driver.
+ * 
+ * Implements RS-232 communication using Boost.Asio.
+ */
+
+#pragma once
+#include "Device.hpp"
+#include <boost/asio.hpp>
+#include <memory>
+
+namespace Cognitive::HAL {
+
+class SerialDevice : public Device {
+public:
+    SerialDevice();
+    ~SerialDevice() override;
+
+    bool open(const std::string& path) override;
+    void close() override;
+    [[nodiscard]] bool isOpen() const override;
+
+    bool write(std::span<const uint8_t> data) override;
+    std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) override;
+    
+    /**
+     * @brief Purges the OS input buffer.
+     */
+    void purge() override;
+
+    [[nodiscard]] DeviceType getType() const override { return DeviceType::Serial; }
+    [[nodiscard]] std::string getPath() const override { return portName_; }
+
+    // Serial specific configuration
+    void setBaudRate(unsigned int baudRate);
+    void setParity(boost::asio::serial_port_base::parity::type parity);
+    void setStopBits(boost::asio::serial_port_base::stop_bits::type stopBits);
+    void setFlowControl(boost::asio::serial_port_base::flow_control::type flowControl);
+    
+    /**
+     * @brief Sets the internal OS buffer size.
+     * @param size Bytes.
+     */
+    void setBufferSize(size_t size);
+
+    /**
+     * @brief Sets the read/write timeout.
+     */
+    void setTimeout(std::chrono::milliseconds timeout);
+
+    /**
+     * @brief Sets the Data Terminal Ready (DTR) line status.
+     * @param level true for high, false for low.
+     * @return true on success.
+     */
+    bool setDTR(bool level);
+
+    /**
+     * @brief Sets the Request To Send (RTS) line status.
+     * @param level true for high, false for low.
+     * @return true on success.
+     */
+    bool setRTS(bool level);
+
+    /**
+     * @brief Sends a break signal (logic 0) for a specific duration.
+     * Used for bootloader recovery.
+     * @return true on success.
+     */
+    bool sendBreak();
+
+    /**
+     * @brief Manually controls the break signal state.
+     * @param level true to assert break (space), false to clear (mark).
+     */
+    bool setBreak(bool level);
+
+    // Modem Status Line Accessors
+    bool getCTS(); ///< Clear To Send
+    bool getDSR(); ///< Data Set Ready
+    bool getRI();  ///< Ring Indicator
+    bool getCD();  ///< Carrier Detect
+    
+    /**
+     * @brief Enumerates available COM ports on the system.
+     * @return List of port names (e.g., "COM1", "/dev/ttyUSB0").
+     */
+    static std::vector<std::string> enumerate();
+
+private:
+    std::unique_ptr<boost::asio::io_context> ioContext_;
+    std::unique_ptr<boost::asio::serial_port> serialPort_;
+    std::string portName_;
+    unsigned int baudRate_ = 115200;
+    size_t bufferSize_ = 4096;
+    std::chrono::milliseconds timeout_{1000};
+};
+
+}

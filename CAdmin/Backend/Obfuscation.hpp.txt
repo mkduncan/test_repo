@@ -1,0 +1,79 @@
+/**
+ * @file Obfuscation.hpp
+ * @brief Compile-time string obfuscation utilities.
+ * 
+ * Provides mechanisms to hide sensitive string literals (commands, keys)
+ * within the binary by encrypting them at compile-time and decrypting
+ * them at runtime.
+ */
+
+#pragma once
+#include <array>
+#include <string>
+#include <string_view>
+#include <cstdint>
+
+namespace Cognitive::Security {
+
+/**
+ * @brief The XOR key used for compile-time obfuscation.
+ * 
+ * This key matches the specific byte value used in legacy systems
+ * to ensure compatibility with any specific byte-aligned protocols
+ * that might rely on this obfuscation pattern.
+ */
+constexpr uint8_t XOR_KEY = 0x5A;
+
+/**
+ * @struct ObfuscatedString
+ * @brief A container for a compile-time obfuscated string.
+ * 
+ * @tparam N The size of the character array including the null terminator.
+ */
+template<size_t N>
+struct ObfuscatedString {
+    /**
+     * @brief The internal storage for the obfuscated data.
+     */
+    std::array<char, N> data;
+
+    /**
+     * @brief Compile-time constructor that performs XOR encryption.
+     * 
+     * @param str The string literal to obfuscate.
+     */
+    consteval ObfuscatedString(const char(&str)[N]) : data{} {
+        for (size_t i = 0; i < N; ++i) {
+            data[i] = str[i] ^ XOR_KEY;
+        }
+    }
+
+    /**
+     * @brief Runtime decryption method.
+     * 
+     * Decrypts the stored data using the XOR_KEY and returns it as a std::string.
+     * Filters out the encrypted null terminator if it matches the key.
+     * 
+     * @return std::string The decrypted string.
+     */
+    [[nodiscard]] std::string decrypt() const {
+        std::string result;
+        result.reserve(N);
+        for (size_t i = 0; i < N; ++i) {
+            if (data[i] != (char)XOR_KEY) { 
+                result.push_back(data[i] ^ XOR_KEY);
+            }
+        }
+        return result;
+    }
+};
+
+}
+
+/**
+ * @def OBF(str)
+ * @brief Macro to create a temporary decrypted string from a literal.
+ * 
+ * Usage: std::string s = OBF("SecretString");
+ */
+#define OBF(str) (::Cognitive::Security::ObfuscatedString(str).decrypt())

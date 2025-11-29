@@ -1,0 +1,107 @@
+
+
+/**
+ * @file LPTDevice.hpp
+ * @brief Legacy Parallel Port (LPT/IEEE 1284) communication driver.
+ * 
+ * Implements communication with legacy parallel printers, primarily on Windows
+ * using standard file I/O handles (CreateFile/WriteFile).
+ */
+
+#pragma once
+#include "Device.hpp"
+#include "Utility.hpp"
+#include <memory>
+#include <string>
+#include <vector>
+#include <boost/system/error_code.hpp>
+
+namespace Cognitive::HAL {
+
+class LPTDevice : public Device {
+public:
+    LPTDevice();
+    ~LPTDevice() override;
+
+    /**
+     * @brief Opens a connection to a parallel port.
+     * @param path Port name (e.g., "LPT1").
+     * @return true if successfully opened.
+     */
+    bool open(const std::string& path) override;
+    
+    /**
+     * @brief Closes the parallel port handle.
+     */
+    void close() override;
+    
+    /**
+     * @brief Checks if the port handle is valid.
+     */
+    [[nodiscard]] bool isOpen() const override;
+
+    /**
+     * @brief Flushes the output buffer.
+     */
+    void flush() override;
+
+    /**
+     * @brief Purges input buffer (if bidirectional).
+     */
+    void purge() override;
+
+    /**
+     * @brief Writes binary data to the parallel port.
+     * @param data Data buffer.
+     * @return true if all data was written.
+     */
+    bool write(std::span<const uint8_t> data) override;
+
+    /**
+     * @brief Reads data from the parallel port (if bidirectional).
+     * @param maxBytes Maximum bytes to read.
+     * @param timeout Read timeout.
+     * @return Vector of read bytes.
+     */
+    std::vector<uint8_t> read(size_t maxBytes, std::chrono::milliseconds timeout) override;
+
+    // Device Interface Implementation
+    [[nodiscard]] DeviceType getType() const override { return DeviceType::Parallel; }
+    [[nodiscard]] std::string getPath() const override { return portName_; }
+    [[nodiscard]] std::string getDescription() const;
+
+    /**
+     * @brief Sets the I/O timeout.
+     * @param timeoutMs Timeout in milliseconds.
+     */
+    void setTimeout(std::chrono::milliseconds timeoutMs);
+
+    // Status Line Accessors
+    
+    /**
+     * @brief Reads the raw status register byte.
+     * @return Status byte (bits: 7=Busy, 6=Ack, 5=PaperOut, 4=Select, 3=Error).
+     */
+    uint8_t readStatusRegister();
+
+    bool isPaperOut();
+    bool isBusy();
+    bool isError();
+    bool isSelect();
+
+    /**
+     * @brief Enumerates available LPT ports on the system (LPT1-LPT256).
+     * @return List of active LPT ports.
+     */
+    static std::vector<std::string> enumerate();
+
+private:
+    struct Impl; // PIMPL to hide Windows headers
+    std::unique_ptr<Impl> pImpl_;
+    
+    std::string portName_;
+    std::chrono::milliseconds timeout_{500};
+    boost::system::error_code lastErrorCode_;
+};
+
+}

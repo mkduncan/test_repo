@@ -1,0 +1,138 @@
+#include "LPTDevice.hpp"
+#include "Obfuscation.hpp"
+#include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+namespace Cognitive::HAL {
+
+struct LPTDevice::Impl {
+#ifdef _WIN32
+    HANDLE hPort = INVALID_HANDLE_VALUE;
+#else
+    int fd = -1;
+#endif
+};
+
+LPTDevice::LPTDevice() : pImpl_(std::make_unique<Impl>()) {
+}
+
+LPTDevice::~LPTDevice() {
+    close();
+}
+
+bool LPTDevice::open(const std::string& path) {
+    portName_ = path;
+    lastError_.clear();
+
+#ifdef _WIN32
+    std::string fullPath = "\\\\.\\" + path; 
+    pImpl_->hPort = CreateFileA(fullPath.c_str(),
+                               GENERIC_READ | GENERIC_WRITE,
+                               0, 
+                               NULL,
+                               OPEN_EXISTING,
+                               0, 
+                               NULL);
+
+    if (pImpl_->hPort == INVALID_HANDLE_VALUE) {
+        lastError_ = OBF("Failed to open LPT port");
+        return false;
+    }
+    return true;
+#else
+    lastError_ = OBF("LPT Not supported on this platform");
+    return false;
+#endif
+}
+
+void LPTDevice::close() {
+#ifdef _WIN32
+    if (pImpl_->hPort != INVALID_HANDLE_VALUE) {
+        CloseHandle(pImpl_->hPort);
+        pImpl_->hPort = INVALID_HANDLE_VALUE;
+    }
+#endif
+}
+
+bool LPTDevice::isOpen() const {
+#ifdef _WIN32
+    return pImpl_->hPort != INVALID_HANDLE_VALUE;
+#else
+    return false;
+#endif
+}
+
+void LPTDevice::flush() {
+    // No-op for LPT usually
+}
+
+void LPTDevice::purge() {
+    // No-op for LPT usually
+}
+
+bool LPTDevice::write(std::span<const uint8_t> data) {
+    if (!isOpen()) return false;
+
+#ifdef _WIN32
+    DWORD bytesWritten;
+    if (!WriteFile(pImpl_->hPort, data.data(), static_cast<DWORD>(data.size()), &bytesWritten, NULL)) {
+        lastError_ = OBF("Write failed");
+        return false;
+    }
+    return bytesWritten == data.size();
+#else
+    return false;
+#endif
+}
+
+std::vector<uint8_t> LPTDevice::read(size_t maxBytes, std::chrono::milliseconds timeout) {
+    if (!isOpen()) return {};
+    
+    // Standard LPT on Windows is write-only via file API typically.
+    // Bidirectional requres IEEE 1284 negotiation which is complex via raw handle.
+    return {};
+}
+
+std::string LPTDevice::getDescription() const {
+    return OBF("Parallel Port Device");
+}
+
+void LPTDevice::setTimeout(std::chrono::milliseconds timeoutMs) {
+    timeout_ = timeoutMs;
+    // Would set timeouts via COMMTIMEOUTS if applicable to LPT handles
+}
+
+uint8_t LPTDevice::readStatusRegister() {
+    return 0;
+}
+
+bool LPTDevice::isPaperOut() {
+#ifdef _WIN32
+    return false; 
+#else
+    return false;
+#endif
+}
+
+bool LPTDevice::isBusy() { return false; }
+bool LPTDevice::isError() { return false; }
+bool LPTDevice::isSelect() { return true; }
+
+std::vector<std::string> LPTDevice::enumerate() {
+    std::vector<std::string> ports;
+#ifdef _WIN32
+    char path[5000];
+    for (int i = 1; i <= 3; i++) {
+        std::string name = "LPT" + std::to_string(i);
+        if (QueryDosDeviceA(name.c_str(), path, 5000)) {
+            ports.push_back(name);
+        }
+    }
+#endif
+    return ports;
+}
+
+}

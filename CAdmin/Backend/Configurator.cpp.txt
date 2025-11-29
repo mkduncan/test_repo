@@ -1,0 +1,131 @@
+#include "Configurator.hpp"
+#include "Debug.hpp"
+#include <fstream>
+#include <filesystem>
+#include <iostream>
+#include <vector>
+
+namespace Cognitive::App {
+
+Configurator::Configurator() {
+    #ifdef _WIN32
+        const char* appData = std::getenv("APPDATA");
+        std::string basePath = appData ? std::string(appData) + "\\Cognitive" : "C:\\ProgramData\\Cognitive";
+    #else
+        const char* home = std::getenv("HOME");
+        std::string basePath = home ? std::string(home) + "/.cognitive" : "/tmp/cognitive";
+    #endif
+
+    std::filesystem::path path(basePath);
+    std::filesystem::create_directories(path);
+
+    currentConfigPath_ = (path / "cadmin_config.json").string();
+    resourcePath_ = (path / "resources").string();
+    
+    load(currentConfigPath_);
+}
+
+Configurator& Configurator::global() {
+    static Configurator instance;
+    return instance;
+}
+
+void Configurator::load(const std::string& path) {
+    currentConfigPath_ = path;
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        Debug::Logger::Warn("Config file not found, starting fresh: " + path);
+        return;
+    }
+
+    try {
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (content.empty()) return;
+
+        boost::json::value jv = boost::json::parse(content);
+        if (jv.is_object()) {
+            properties_.clear();
+            for (const auto& item : jv.as_object()) {
+                if (item.value().is_string()) {
+                    properties_[std::string(item.key())] = item.value().as_string().c_str();
+                } else {
+                     properties_[std::string(item.key())] = boost::json::serialize(item.value());
+                }
+            }
+        }
+    } catch (const std::exception& e) {
+        Debug::Logger::Error("Failed to parse config file: " + std::string(e.what()));
+    }
+}
+
+void Configurator::save(const std::string& path) {
+    currentConfigPath_ = path;
+    boost::json::object obj;
+    for (const auto& [key, value] : properties_) {
+        obj[key] = value;
+    }
+
+    std::ofstream file(path);
+    if (file.is_open()) {
+        file << boost::json::serialize(obj);
+    } else {
+        Debug::Logger::Error("Failed to write config file: " + path);
+    }
+}
+
+std::string Configurator::getString(const std::string& key, const std::string& defaultValue) {
+    auto it = properties_.find(key);
+    if (it != properties_.end()) {
+        return it->second;
+    }
+    return defaultValue;
+}
+
+int Configurator::getInt(const std::string& key, int defaultValue) {
+    auto it = properties_.find(key);
+    if (it != properties_.end()) {
+        try {
+            return std::stoi(it->second);
+        } catch (...) { return defaultValue; }
+    }
+    return defaultValue;
+}
+
+bool Configurator::getBool(const std::string& key, bool defaultValue) {
+    auto it = properties_.find(key);
+    if (it != properties_.end()) {
+        return it->second == "true" || it->second == "1";
+    }
+    return defaultValue;
+}
+
+void Configurator::setString(const std::string& key, const std::string& value) {
+    properties_[key] = value;
+    save(currentConfigPath_);
+}
+
+void Configurator::setInt(const std::string& key, int value) {
+    setString(key, std::to_string(value));
+}
+
+void Configurator::setBool(const std::string& key, bool value) {
+    setString(key, value ? "true" : "false");
+}
+
+std::string Configurator::getAppDataPath() const {
+    return std::filesystem::path(currentConfigPath_).parent_path().string();
+}
+
+std::string Configurator::getInstallPath() const {
+    return std::filesystem::current_path().string();
+}
+
+void Configurator::setResourcePath(const std::string& path) {
+    resourcePath_ = path;
+}
+
+std::string Configurator::getResourcePath() const {
+    return resourcePath_;
+}
+
+}

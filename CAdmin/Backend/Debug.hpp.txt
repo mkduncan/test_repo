@@ -1,0 +1,83 @@
+/**
+ * @file Debug.hpp
+ * @brief Centralized logging and debugging subsystem.
+ * 
+ * Handles application-wide logging with support for different severity levels
+ * and source location tracking (file, line, function).
+ */
+
+#pragma once
+#include <string>
+#include <iostream>
+#include <format>
+#include <source_location>
+#include <functional>
+
+namespace Cognitive::Debug {
+
+/**
+ * @enum LogLevel
+ * @brief Defines the severity of the log message.
+ */
+enum class LogLevel {
+    Trace,      ///< detailed debugging information
+    Info,       ///< general informational messages
+    Warning,    ///< potential issues that don't stop execution
+    Error,      ///< errors that might allow the app to continue
+    Critical    ///< fatal errors requiring immediate attention
+};
+
+/**
+ * @class Logger
+ * @brief Static class providing logging methods.
+ */
+class Logger {
+public:
+    using LogCallback = std::function<void(LogLevel, const std::string&)>;
+
+    /**
+     * @brief Sets the callback function to receive log messages.
+     * Used to pipe logs to the GUI console.
+     * @param cb Callback function.
+     */
+    static void setCallback(LogCallback cb);
+
+    /**
+     * @brief Logs a message with a specific severity level and source location.
+     * 
+     * @param level The severity level.
+     * @param message The message content.
+     * @param loc The source location (automatically captured).
+     */
+    static void Log(LogLevel level, const std::string& message, const std::source_location& loc = std::source_location::current());
+
+    /**
+     * @brief Helper for logging Trace level messages.
+     * @param message The message content.
+     * @param loc The source location (automatically captured).
+     */
+    static void Trace(const std::string& message, const std::source_location& loc = std::source_location::current());
+
+    /**
+     * @brief Helper for logging Info level messages.
+     * @param message The message content.
+     * @param loc The source location (automatically captured).
+     */
+    static void Info(const std::string& message, const std::source_location& loc = std::source_location::current());
+
+    /**
+     * @brief Helper for logging Warning level messages.
+     * @param message The message content.
+     * @param loc The source location (automatically captured).
+     */
+    static void Warn(const std::string& message, const std::source_location& loc = std::source_location::current());
+
+    /**
+     * @brief Helper for logging Error level messages.
+     * @param message The message content.
+     * @param loc The source location (automatically captured).
+     */
+    static void Error(const std::string& message, const std::source_location& loc = std::source_location::current());
+};
+
+}

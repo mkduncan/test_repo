@@ -1,0 +1,122 @@
+/**
+ * @file CPLParser.hpp
+ * @brief Parsing logic for the Cognitive Programming Language (CPL).
+ * 
+ * Handles interpreting response strings from the printer, parsing status codes,
+ * and extracting variable values from command responses. Mirrors logic in JAdmin's CPLParser.java.
+ */
+
+#pragma once
+#include <string>
+#include <vector>
+#include <map>
+#include <regex>
+#include <optional>
+#include <cstdint>
+
+namespace Cognitive::Business {
+
+/**
+ * @struct PrinterStatus
+ * @brief Represents the decoded state of the printer.
+ * 
+ * Parsed from raw status strings like "R00000".
+ */
+struct PrinterStatus {
+    bool ready = false;
+    bool paperOut = false;
+    bool headUp = false;
+    bool ribbonOut = false;
+    bool paused = false;
+    bool error = false;
+    std::string rawStatus;
+    
+    /**
+     * @brief Parses standard CPL status string (e.g., "R00000").
+     * @param response Raw string from printer.
+     * @return true if parsing was successful.
+     */
+    bool parseFromResponse(const std::string& response);
+
+    /**
+     * @brief Returns human-readable status description.
+     */
+    [[nodiscard]] std::string toString() const;
+};
+
+struct PrinterVariable {
+    std::string name;
+    std::string value;
+    std::string description;
+};
+
+class CPLParser {
+public:
+    /**
+     * @brief Cleans response string (trims whitespace, normalizes line endings).
+     * @param str Raw input string.
+     * @return Cleaned string.
+     */
+    static std::string clean(const std::string& str);
+
+    /**
+     * @brief Extract a substring matching a regex pattern.
+     */
+    static std::string getMatch(const std::string& str, const std::string& pattern);
+    
+    /**
+     * @brief Extracts the value portion of a "VARIABLE = VALUE" response.
+     * @param response Full response string.
+     * @param command The command that generated this response (context needed for parsing).
+     */
+    static std::string getResponseValue(const std::string& response, const std::string& command);
+
+    /**
+     * @brief Extracts variable name from a command string.
+     */
+    static std::string getVariableName(const std::string& command);
+    
+    /**
+     * @brief Determines the start and end regex patterns expected for a given command response.
+     * 
+     * Used by PrinterHelper to wait for the correct data stream termination.
+     * @param command The sent command.
+     * @param[out] patternStart Regex for start of response.
+     * @param[out] patternEnd Regex for end of response (or empty if single line).
+     */
+    static void getResponsePattern(const std::string& command, std::string& patternStart, std::string& patternEnd);
+    
+    /**
+     * @brief Parses a status response into a key-value map.
+     */
+    static std::map<std::string, std::string> parseStatusResponse(const std::string& response);
+    
+    // Object Info Parsing
+    struct ObjectInfo {
+        std::string name;
+        std::string type;
+        std::string storage;
+        size_t size = 0;
+        std::string description;
+    };
+    
+    static std::vector<ObjectInfo> parseObjectList(const std::string& response);
+    
+    // Helpers for font/object headers
+    static int getObjectInfo(const std::vector<uint8_t>& data, const std::string& filePath);
+    static std::string parseFont(const std::vector<uint8_t>& data, const std::string& filePath);
+    static int getFontType(const std::vector<uint8_t>& data);
+    static std::string getFontName(const std::vector<uint8_t>& data);
+    static std::string getFontDesc(const std::vector<uint8_t>& data);
+    
+    // Constants
+    static const std::string COMPRESSED_BITMAP_FONT;
+    
+private:
+    static std::string getTypeDescription(const std::string& type);
+    static std::string getStorageDescription(const std::string& storage);
+    static char calculateCRC(uint8_t c, char calc_crc);
+    static std::string getCRC(const std::vector<uint8_t>& data);
+};
+
+}

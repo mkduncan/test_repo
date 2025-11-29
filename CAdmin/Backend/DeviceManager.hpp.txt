@@ -1,0 +1,119 @@
+
+/**
+ * @file DeviceManager.hpp
+ * @brief Centralized management for device discovery and connection lifecycles.
+ * 
+ * Acts as a factory and registry for all active device connections.
+ * Handles the aggregation of discovery results from all driver types.
+ */
+
+#pragma once
+#include "Device.hpp"
+#include <map>
+#include <string>
+#include <memory>
+#include <functional>
+#include <vector>
+#include <mutex>
+#include <thread>
+#include <atomic>
+
+namespace Cognitive::HAL {
+
+class DeviceManager {
+public:
+    /**
+     * @brief Access singleton instance.
+     */
+    static DeviceManager& instance();
+
+    DeviceManager(const DeviceManager&) = delete;
+    DeviceManager& operator=(const DeviceManager&) = delete;
+
+    /**
+     * @brief Scans all supported interfaces (USB, Serial, Network, BT) for printers.
+     * @return Aggregated list of found devices.
+     */
+    std::vector<DeviceInfo> scanDevices();
+    
+    /**
+     * @brief Factory method to create a device instance by type.
+     * @param type The type of device to instantiate.
+     */
+    std::shared_ptr<Device> createDevice(DeviceType type);
+
+    /**
+     * @brief Retrieves an already managed/connected device by ID.
+     * @param id Device unique ID.
+     * @return Shared pointer to device or nullptr if not found/connected.
+     */
+    std::shared_ptr<Device> getDevice(const std::string& id);
+
+    /**
+     * @brief Retrieves multiple devices by ID.
+     * @param ids List of device IDs.
+     * @return List of shared pointers to found devices.
+     */
+    std::vector<std::shared_ptr<Device>> getDevices(const std::vector<std::string>& ids);
+    
+    /**
+     * @brief Creates and connects to a device.
+     * @param id Unique ID to assign to this connection.
+     * @param path Path/Address for connection.
+     * @param type Hardware type.
+     * @return true if connection successful.
+     */
+    bool connect(const std::string& id, const std::string& path, DeviceType type);
+
+    /**
+     * @brief Disconnects and removes a device from management.
+     * @param id Device unique ID.
+     */
+    void disconnect(const std::string& id);
+
+    /**
+     * @brief Disconnects all active devices.
+     */
+    void disconnectAll();
+
+    /**
+     * @brief Sends a command to multiple devices.
+     * @param deviceIds List of target device IDs.
+     * @param command The data to send.
+     */
+    void broadcast(const std::vector<std::string>& deviceIds, const std::string& command);
+
+    /**
+     * @brief Starts background monitoring loop for device health/heartbeats.
+     * @param intervalMs Polling interval in milliseconds.
+     */
+    void startBackgroundMonitoring(int intervalMs = 5000);
+
+    /**
+     * @brief Stops background monitoring.
+     */
+    void stopBackgroundMonitoring();
+
+    // Async event callbacks
+    using DeviceCallback = std::function<void(const DeviceInfo&)>;
+    void setDeviceConnectedCallback(DeviceCallback cb);
+    void setDeviceDisconnectedCallback(DeviceCallback cb);
+
+private:
+    DeviceManager() = default;
+    ~DeviceManager();
+    
+    void monitorLoop();
+
+    std::map<std::string, std::shared_ptr<Device>> activeDevices_;
+    std::mutex mutex_;
+    
+    DeviceCallback onConnected_;
+    DeviceCallback onDisconnected_;
+
+    std::atomic<bool> monitoring_{false};
+    std::thread monitorThread_;
+    int monitorInterval_ = 5000;
+};
+
+}

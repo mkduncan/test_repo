@@ -1,0 +1,164 @@
+
+
+/**
+ * @file WebBridge.hpp
+ * @brief JSON-RPC Bridge connecting C++ backend to JS frontend.
+ * 
+ * Maps JavaScript function calls to C++ methods and handles bidirectional
+ * event communication.
+ */
+
+#pragma once
+#include <string>
+#include <functional>
+#include <map>
+#include <vector>
+#include <wx/webview.h>
+
+namespace Cognitive::UI {
+
+class WebBridge {
+public:
+    explicit WebBridge(wxWebView* webView);
+    
+    /**
+     * @brief Binds the bridge to the WebView instance.
+     */
+    void bind();
+    
+    /**
+     * @brief Injects the JavaScript glue code to connect frontend stubs to C++.
+     * 
+     * Call this after the page has finished loading to overwrite the 
+     * placeholder functions in Showcase.html with actual RPC calls.
+     */
+    void injectNativeInterface();
+
+    /**
+     * @brief Processes a raw message string from JavaScript.
+     * @param msg JSON string.
+     */
+    void handleScriptMessage(const std::string& msg);
+    
+    /**
+     * @brief Executes arbitrary JavaScript in the WebView.
+     * @param script The JavaScript code to execute.
+     */
+    void executeJavascript(const std::string& script);
+    
+    /**
+     * @brief Sends an event to JavaScript.
+     * @param eventName Name of the event.
+     * @param jsonPayload JSON data payload.
+     */
+    void sendEvent(const std::string& eventName, const std::string& jsonPayload);
+
+    /**
+     * @brief Resolves a JavaScript Promise.
+     * @param promiseId ID of the pending promise.
+     * @param jsonResult JSON result object.
+     */
+    void resolvePromise(const std::string& promiseId, const std::string& jsonResult);
+
+    /**
+     * @brief Rejects a JavaScript Promise.
+     * @param promiseId ID of the pending promise.
+     * @param errorMsg Error description.
+     */
+    void rejectPromise(const std::string& promiseId, const std::string& errorMsg);
+
+private:
+    wxWebView* webView_;
+    
+    // RPC Method Handler Signature
+    using MethodHandler = std::function<std::string(const std::string&)>;
+    std::map<std::string, MethodHandler> handlers_;
+
+    void registerHandlers();
+    
+    // Core Handlers
+    std::string enumerateSerialPorts(const std::string& args);
+    std::string openSerialPort(const std::string& args);
+    std::string closeSerialPort(const std::string& args);
+    std::string enumerateUsbPrinters(const std::string& args);
+    std::string openUsbConnection(const std::string& args);
+    std::string closeUsbConnection(const std::string& args);
+    std::string discoverNetworkPrinters(const std::string& args);
+    std::string openTcpConnection(const std::string& args);
+    std::string closeTcpConnection(const std::string& args);
+    std::string discoverBluetoothPrinters(const std::string& args);
+    std::string openBluetoothConnection(const std::string& args);
+    std::string closeBluetoothConnection(const std::string& args);
+    
+    /**
+     * @brief Unified scan that aggregates results from all transport types.
+     * Implements "Backend_ScanForDevices" functionality.
+     */
+    std::string scanAllDevices(const std::string& args);
+
+    // Printer Operations
+    std::string sendData(const std::string& args);
+    std::string receiveData(const std::string& args);
+    std::string sendCommand(const std::string& args);
+    std::string getPrinterStatus(const std::string& args);
+    std::string getPrinterIdentity(const std::string& args);
+    std::string getPrinterVariables(const std::string& args);
+    std::string getPrintHeadTemperature(const std::string& args);
+    std::string getMediaSensors(const std::string& args);
+    std::string getPrintStatistics(const std::string& args);
+    std::string setVariable(const std::string& args);
+    std::string calibrateMedia(const std::string& args);
+    std::string factoryReset(const std::string& args);
+    std::string resetPrinter(const std::string& args);
+    std::string printTestLabel(const std::string& args);
+    std::string printLabel(const std::string& args);
+    std::string feedLabel(const std::string& args);
+    std::string cancelPrint(const std::string& args);
+
+    // Firmware & Objects
+    std::string getFirmwareVersions(const std::string& args);
+    std::string updateFirmware(const std::string& args);
+    std::string verifyFirmware(const std::string& args);
+    std::string listObjects(const std::string& args);
+    std::string downloadObject(const std::string& args);
+    std::string deleteObject(const std::string& args);
+
+    // Diagnostics & Config
+    std::string getMemoryInfo(const std::string& args);
+    std::string getEventLog(const std::string& args);
+    std::string clearEventLog(const std::string& args);
+    std::string runSelfTest(const std::string& args);
+    std::string getAdcReadings(const std::string& args);
+    std::string dumpMemory(const std::string& args);
+    std::string getNetworkConfig(const std::string& args);
+    std::string setNetworkConfig(const std::string& args);
+    std::string getBluetoothConfig(const std::string& args);
+    std::string setBluetoothConfig(const std::string& args);
+
+    // Bootloader
+    std::string enterBootloader(const std::string& args);
+    std::string checkBootloader(const std::string& args);
+    std::string sendBootloaderCommand(const std::string& args);
+
+    // File & Utility Operations
+    std::string convertImage(const std::string& args);
+    std::string generateBarcode(const std::string& args);
+    std::string openFileDialog(const std::string& args);
+    std::string readFile(const std::string& args);
+    std::string saveFile(const std::string& args);
+
+    // Manufacturing
+    std::string loadSerialNumber(const std::string& args);
+    std::string loadModelNumber(const std::string& args);
+    std::string loadMacAddress(const std::string& args);
+    std::string loadLicense(const std::string& args);
+    std::string runMfgTest(const std::string& args);
+
+    // System
+    std::string getAppVersion(const std::string& args);
+    std::string getSystemStats(const std::string& args);
+    std::string showMessageBox(const std::string& args);
+    std::string openExternalUrl(const std::string& args);
+};
+
+}

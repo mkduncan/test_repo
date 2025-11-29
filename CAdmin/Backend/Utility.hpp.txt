@@ -1,0 +1,62 @@
+/**
+ * @file Utility.hpp
+ * @brief Low-level concurrency and I/O helpers for hardware drivers.
+ * 
+ * Provides timeout execution wrappers and threading primitives used
+ * by the specific device implementations (USB, BT, LPT).
+ */
+
+#pragma once
+#include <chrono>
+#include <functional>
+#include <future>
+#include <thread>
+#include <string>
+#include <vector>
+#include <span>
+#include <cstdint>
+
+namespace Cognitive::HAL::Utility {
+
+/**
+ * @brief precise thread blocking helper.
+ * @param duration Time to sleep.
+ * @return true if sleep completed, false if interrupted.
+ */
+bool BlockThread(std::chrono::milliseconds duration);
+
+/**
+ * @brief Executes a function with a strict timeout.
+ * 
+ * Wraps the function call in an async future and waits for the specified duration.
+ * 
+ * @tparam F Function type.
+ * @tparam Args Argument types.
+ * @param timeout Maximum duration to wait.
+ * @param func Function to execute.
+ * @param args Arguments to pass to function.
+ * @return true if execution completed within timeout, false otherwise.
+ */
+template <typename F, typename... Args>
+bool ExecuteWithTimeout(std::chrono::milliseconds timeout, F&& func, Args&&... args) {
+    if (timeout.count() == 0) {
+        std::forward<F>(func)(std::forward<Args>(args)...);
+        return true;
+    }
+
+    auto future = std::async(std::launch::async, std::forward<F>(func), std::forward<Args>(args)...);
+    return future.wait_for(timeout) == std::future_status::ready;
+}
+
+/**
+ * @brief Helpers for buffer conversion.
+ */
+std::span<std::byte> StringToByteSpan(std::string& str);
+std::span<const std::byte> StringToConstByteSpan(const std::string& str);
+
+/**
+ * @brief String formatting helper for error messages.
+ */
+std::string FormatError(const std::string& context, int errorCode);
+
+}

@@ -1,0 +1,44 @@
+
+/**
+ * @file SystemMonitor.hpp
+ * @brief Access to host system statistics (CPU, RAM, Disk, Network).
+ * 
+ * Used to populate the "Server Backend" dashboard in the UI.
+ */
+
+#pragma once
+#include <string>
+#include <boost/json.hpp>
+
+namespace Cognitive::System {
+
+class SystemMonitor {
+public:
+    /**
+     * @brief Gets current CPU usage percentage (0.0 - 100.0).
+     */
+    static double getCpuUsage();
+
+    /**
+     * @brief Gets current Memory usage percentage (0.0 - 100.0).
+     */
+    static double getMemoryUsage();
+
+    /**
+     * @brief Gets current Disk usage percentage (0.0 - 100.0).
+     */
+    static double getDiskUsage();
+
+    /**
+     * @brief Gets network traffic statistics.
+     * @return JSON object with "in" and "out" rates in KB/s.
+     */
+    static boost::json::object getNetworkTraffic();
+    
+    /**
+     * @brief Aggregates all stats into a single JSON object.
+     */
+    static boost::json::object getAllStats();
+};
+
+}

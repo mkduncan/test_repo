@@ -1,0 +1,56 @@
+/**
+ * @file Compression.hpp
+ * @brief LZMA2 compression utilities using liblzma.
+ * 
+ * Provides static methods for compressing and decompressing binary data and strings
+ * to support firmware and resource handling.
+ */
+
+#pragma once
+#include <vector>
+#include <string>
+#include <span>
+#include <cstdint>
+
+namespace Cognitive::Utilities {
+
+/**
+ * @class Compression
+ * @brief Static utility class for LZMA operations.
+ */
+class Compression {
+public:
+    /**
+     * @brief Compresses raw binary data using LZMA2.
+     * 
+     * @param input Span of input bytes.
+     * @return std::vector<uint8_t> The compressed data.
+     */
+    static std::vector<uint8_t> compress(std::span<const uint8_t> input);
+
+    /**
+     * @brief Decompresses LZMA2 encoded data.
+     * 
+     * @param input Span of compressed bytes.
+     * @return std::vector<uint8_t> The decompressed data.
+     */
+    static std::vector<uint8_t> decompress(std::span<const uint8_t> input);
+    
+    /**
+     * @brief Helper to compress a std::string.
+     * 
+     * @param str Input string.
+     * @return std::string Compressed data as a string container.
+     */
+    static std::string compressString(const std::string& str);
+
+    /**
+     * @brief Helper to decompress data into a std::string.
+     * 
+     * @param str Input compressed string container.
+     * @return std::string Decompressed string.
+     */
+    static std::string decompressString(const std::string& str);
+};
+
+}

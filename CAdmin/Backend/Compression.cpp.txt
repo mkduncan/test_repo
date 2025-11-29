@@ -1,0 +1,82 @@
+#include "Compression.hpp"
+#include <lzma.h>
+#include <stdexcept>
+#include <iostream>
+#include <vector>
+
+namespace Cognitive::Utilities {
+
+std::vector<uint8_t> Compression::compress(std::span<const uint8_t> input) {
+    lzma_options_lzma opt;
+    lzma_lzma_preset(&opt, LZMA_PRESET_DEFAULT); 
+
+    lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_ret ret = lzma_easy_encoder(&strm, LZMA_PRESET_DEFAULT, LZMA_CHECK_CRC64);
+    if (ret != LZMA_OK) throw std::runtime_error("LZMA init failed");
+
+    std::vector<uint8_t> output;
+    output.resize(input.size() + 1024);
+
+    strm.next_in = input.data();
+    strm.avail_in = input.size();
+    strm.next_out = output.data();
+    strm.avail_out = output.size();
+
+    ret = lzma_code(&strm, LZMA_FINISH);
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        throw std::runtime_error("LZMA encoding failed");
+    }
+
+    output.resize(strm.total_out);
+    lzma_end(&strm);
+    return output;
+}
+
+std::vector<uint8_t> Compression::decompress(std::span<const uint8_t> input) {
+    lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_ret ret = lzma_stream_decoder(&strm, UINT64_MAX, 0);
+    if (ret != LZMA_OK) throw std::runtime_error("LZMA decoder init failed");
+
+    std::vector<uint8_t> output;
+    output.resize(input.size() * 4); 
+
+    strm.next_in = input.data();
+    strm.avail_in = input.size();
+    
+    size_t write_pos = 0;
+
+    do {
+        if (write_pos == output.size()) {
+            output.resize(output.size() * 2);
+        }
+        strm.next_out = output.data() + write_pos;
+        strm.avail_out = output.size() - write_pos;
+
+        ret = lzma_code(&strm, LZMA_FINISH);
+        
+        write_pos = output.size() - strm.avail_out;
+
+    } while (ret == LZMA_OK);
+
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        throw std::runtime_error("LZMA decoding failed or incomplete");
+    }
+
+    output.resize(write_pos);
+    lzma_end(&strm);
+    return output;
+}
+
+std::string Compression::compressString(const std::string& str) {
+    auto bytes = compress(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(str.data()), str.size()));
+    return std::string(reinterpret_cast<char*>(bytes.data()), bytes.size());
+}
+
+std::string Compression::decompressString(const std::string& str) {
+    auto bytes = decompress(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(str.data()), str.size()));
+    return std::string(reinterpret_cast<char*>(bytes.data()), bytes.size());
+}
+
+}

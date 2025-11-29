@@ -1,0 +1,192 @@
+
+
+/**
+ * @file PrinterHelper.hpp
+ * @brief High-level printer operations and command generation.
+ * 
+ * Provides utility methods to generate CPL commands, send them to a specific
+ * device, and parse results. Now instantiable to support multiple concurrent printers.
+ */
+
+#pragma once
+#include "Obfuscation.hpp"
+#include "Device.hpp"
+#include "PrinterConfig.hpp"
+#include "CPLParser.hpp" // Required for PrinterStatus definition
+#include <string>
+#include <memory>
+#include <chrono>
+#include <vector>
+#include <map>
+
+namespace Cognitive::Business {
+
+struct IndexSensorData {
+    std::string feedType;
+    std::string printMode;
+    int reflective = 0;
+    int transmissive = 0;
+    int gain = 0;
+    int whiteLevel = 0;
+};
+
+struct PrintStatistics {
+    int inchCount = 0;
+    int labelCount = 0;
+    int headLifePercent = 100;
+};
+
+struct WifiConfig {
+    std::string ssid;
+    std::string password;
+    std::string security; // "WPA2-PSK", "WPA3", "WEP", "Open"
+    bool dhcp = true;
+    std::string ip;
+    std::string mask;
+    std::string gateway;
+    std::string dns;
+};
+
+struct BluetoothConfig {
+    std::string name;
+    std::string pin;
+    bool discoverable = false;
+    int securityLevel = 3;
+    bool encryption = true;
+};
+
+class PrinterHelper {
+public:
+    /**
+     * @brief Construct a helper for a specific device.
+     * @param device Shared pointer to the connected device.
+     */
+    explicit PrinterHelper(std::shared_ptr<HAL::Device> device);
+
+    // Device Context Management
+    std::shared_ptr<HAL::Device> getDevice() const;
+    bool isConnected() const;
+
+    // Raw I/O
+    void send(const std::string& command);
+    void send(const std::vector<uint8_t>& data);
+    
+    /**
+     * @brief Sends command and waits for a matching response pattern.
+     * @param command CPL command string.
+     * @param timeout Max wait time.
+     * @return Response string or empty on timeout.
+     */
+    std::string commandWaitResponse(const std::string& command, std::chrono::milliseconds timeout = std::chrono::seconds(5));
+    
+    // Pattern Matching
+    bool waitFor(const std::string& pattern, int seconds);
+    std::string waitForResponse(const std::string& pattern, int seconds);
+
+    // Variable Read/Write
+    std::string getVariable(const std::string& name);
+    void setVariable(const std::string& name, const std::string& value);
+    std::string setAndGetVariable(const std::string& name, const std::string& value);
+    
+    /**
+     * @brief Retrieves all printer variables.
+     * Sends !DUMP USERVARS and parses the output into a map.
+     */
+    std::map<std::string, std::string> getAllVariables();
+
+    // Label Generation
+    void printTestLabel(const PrinterConfig& config, const std::string& tof, const std::string& shiftLeft, const std::string& message);
+    void printSelfTestLabel();
+    void cancelPrint();
+    
+    // Configuration Commands
+    std::string queryStatus();
+    std::string queryRevision();
+    std::string setDarkness(int value);
+    std::string setSpeed(int value);
+    
+    /**
+     * @brief Generates calibration command.
+     * @param type Calibration type (0=DT Bar, 1=DT Gap, etc.)
+     */
+    static std::string calibrate(int type);
+    
+    static std::string variableReset();
+    static std::string factoryRestore();
+    static std::string feed(int lines);
+    
+    // Status & Identity
+    bool isReady(); // Checks for 'Ready' status
+    std::string getModelNumber();
+    std::string getSerialNumber();
+    std::string getFirmwareVersion();
+    std::string getMACAddress();
+    int getPrintHeadTemperature();
+    PrintStatistics getPrintStatistics();
+    
+    // Helper for queries
+    std::string queryVariable(const std::string& name);
+    
+    /**
+     * @brief Queries and parses index sensor data (!QI command).
+     */
+    IndexSensorData parseIndexQuery(const std::string& response);
+    IndexSensorData getMediaSensors();
+
+    /**
+     * @brief Retrieves list of stored label formats (!LS command).
+     */
+    std::vector<std::string> getLabelFormats();
+
+    /**
+     * @brief Retrieves detailed object list with types and sizes.
+     */
+    std::vector<CPLParser::ObjectInfo> getObjectList();
+
+    /**
+     * @brief Queries generic configuration via !GET.
+     */
+    std::string queryConfiguration(const std::string& key);
+
+    /**
+     * @brief Reads a block of raw memory from the printer (!DUMP MEMORY).
+     * @param address Start address.
+     * @param length Number of bytes.
+     */
+    std::vector<uint8_t> dumpMemory(uint32_t address, uint32_t length);
+
+    /**
+     * @brief Retrieves the entire event log.
+     */
+    std::vector<std::string> getEventLog();
+    void clearEventLog();
+
+    /**
+     * @brief Reads ADC values (!SHOW AD).
+     */
+    std::map<std::string, int> getAdcReadings();
+
+    // Advanced Configuration
+    void setWifiConfig(const WifiConfig& config);
+    void setBluetoothConfig(const BluetoothConfig& config);
+
+    // Graphics
+    /**
+     * @brief Prints a raw graphic image to the printer.
+     * @param pcxData PCX encoded image data.
+     * @param x X coordinate.
+     * @param y Y coordinate.
+     * @param width Width in dots.
+     * @param height Height in dots.
+     */
+    void printGraphic(const std::vector<uint8_t>& pcxData, int x, int y, int width, int height);
+
+    // Regex Constants
+    static constexpr const char* GENERAL_PRINTER_READY = ".*[RoOU]00000.*";
+    static constexpr const char* PEELER_PRINTER_READY = ".*[RoOUP]0000.*";
+
+private:
+    std::shared_ptr<HAL::Device> printer_;
+};
+
+}

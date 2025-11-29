@@ -1,0 +1,148 @@
+#include "BTDevice.hpp"
+#include "Obfuscation.hpp"
+#include <iostream>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2bth.h>
+#pragma comment(lib, "ws2_32.lib")
+#endif
+
+namespace Cognitive::HAL {
+
+struct BTDevice::Impl {
+#ifdef _WIN32
+    SOCKET sock = INVALID_SOCKET;
+#endif
+    std::string macAddress;
+    std::string pin_;
+};
+
+BTDevice::BTDevice() : pImpl_(std::make_unique<Impl>()) {
+#ifdef _WIN32
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
+}
+
+BTDevice::~BTDevice() {
+    close();
+#ifdef _WIN32
+    WSACleanup();
+#endif
+}
+
+bool BTDevice::open(const std::string& path) {
+    pImpl_->macAddress = path;
+    lastError_.clear();
+#ifdef _WIN32
+    pImpl_->sock = socket(AF_BTH, SOCK_STREAM, BTHPROTO_RFCOMM);
+    if (pImpl_->sock == INVALID_SOCKET) {
+        lastError_ = OBF("Failed to create socket");
+        return false;
+    }
+
+    SOCKADDR_BTH sockAddr = { 0 };
+    sockAddr.addressFamily = AF_BTH;
+    sockAddr.port = BT_PORT_ANY;
+    
+    unsigned int b[6];
+    if (sscanf(path.c_str(), "%x:%x:%x:%x:%x:%x", &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) == 6) {
+        for (int i = 0; i < 6; i++) {
+            sockAddr.btAddr = (sockAddr.btAddr << 8) + b[i];
+        }
+    }
+
+    if (connect(pImpl_->sock, (SOCKADDR*)&sockAddr, sizeof(sockAddr)) == SOCKET_ERROR) {
+        lastError_ = OBF("Failed to connect to Bluetooth device");
+        closesocket(pImpl_->sock);
+        return false;
+    }
+    return true;
+#else
+    return false;
+#endif
+}
+
+void BTDevice::close() {
+#ifdef _WIN32
+    if (pImpl_->sock != INVALID_SOCKET) {
+        closesocket(pImpl_->sock);
+        pImpl_->sock = INVALID_SOCKET;
+    }
+#endif
+}
+
+bool BTDevice::isOpen() const {
+#ifdef _WIN32
+    return pImpl_->sock != INVALID_SOCKET;
+#else
+    return false;
+#endif
+}
+
+bool BTDevice::write(std::span<const uint8_t> data) {
+    if (!isOpen()) return false;
+#ifdef _WIN32
+    int sent = send(pImpl_->sock, (const char*)data.data(), (int)data.size(), 0);
+    return sent == (int)data.size();
+#else
+    return false;
+#endif
+}
+
+std::vector<uint8_t> BTDevice::read(size_t maxBytes, std::chrono::milliseconds timeout) {
+    if (!isOpen()) return {};
+    std::vector<uint8_t> buffer(maxBytes);
+#ifdef _WIN32
+    DWORD timeoutMs = (DWORD)timeout.count();
+    setsockopt(pImpl_->sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeoutMs, sizeof(timeoutMs));
+    
+    int received = recv(pImpl_->sock, (char*)buffer.data(), (int)maxBytes, 0);
+    if (received > 0) {
+        buffer.resize(received);
+        return buffer;
+    }
+#endif
+    return {};
+}
+
+void BTDevice::purge() {
+}
+
+void BTDevice::setPin(const std::string& pin) {
+    pImpl_->pin_ = pin;
+}
+
+std::vector<DeviceInfo> BTDevice::enumerate() {
+    std::vector<DeviceInfo> devices;
+#ifdef _WIN32
+    WSAQUERYSET queryset;
+    memset(&queryset, 0, sizeof(WSAQUERYSET));
+    queryset.dwSize = sizeof(WSAQUERYSET);
+    queryset.dwNameSpace = NS_BTH;
+
+    HANDLE hLookup;
+    int result = WSALookupServiceBegin(&queryset, LUP_CONTAINERS | LUP_FLUSHCACHE, &hLookup);
+
+    if (result == 0) {
+        BYTE buffer[4096];
+        DWORD bufferLength = sizeof(buffer);
+        WSAQUERYSET* pResults = (WSAQUERYSET*)&buffer;
+        while (WSALookupServiceNext(hLookup, 0, &bufferLength, pResults) == 0) {
+            DeviceInfo info;
+            info.name = pResults->lpszServiceInstanceName ? pResults->lpszServiceInstanceName : "Unknown";
+            info.id = "BT:" + info.name;
+            info.type = DeviceType::Bluetooth;
+            devices.push_back(info);
+        }
+        WSALookupServiceEnd(hLookup);
+    }
+#endif
+    return devices;
+}
+
+bool BTDevice::isLowEnergy() const { return false; }
+int BTDevice::getRSSI() const { return 0; }
+
+}

@@ -1,0 +1,68 @@
+/**
+ * @file HttpClient.hpp
+ * @brief HTTP client for database interactions and file downloads.
+ * 
+ * Used by TestEngine to perform serial number lookups and register new printers
+ * against the central database, as well as download firmware updates.
+ */
+
+#pragma once
+#include <string>
+#include <map>
+#include <functional>
+#include <vector>
+#include <chrono>
+#include <memory>
+#include <boost/system/error_code.hpp>
+
+namespace Cognitive::Network {
+
+struct HttpResponse {
+    int statusCode;
+    std::string body;
+    std::map<std::string, std::string> headers;
+};
+
+class HttpClient {
+public:
+    HttpClient();
+    ~HttpClient();
+
+    /**
+     * @brief Synchronous GET request.
+     * @param url Target URL.
+     * @param timeout Request timeout.
+     * @return HttpResponse object.
+     */
+    HttpResponse get(const std::string& url, std::chrono::milliseconds timeout = std::chrono::seconds(10));
+
+    /**
+     * @brief Synchronous POST request.
+     * @param url Target URL.
+     * @param payload Body content.
+     * @param contentType MIME type.
+     * @param timeout Request timeout.
+     * @return HttpResponse object.
+     */
+    HttpResponse post(const std::string& url, const std::string& payload, const std::string& contentType = "application/json", std::chrono::milliseconds timeout = std::chrono::seconds(10));
+
+    // Async operations
+    using ResponseCallback = std::function<void(const HttpResponse&, const boost::system::error_code&)>;
+    
+    void getAsync(const std::string& url, ResponseCallback cb);
+    void postAsync(const std::string& url, const std::string& payload, ResponseCallback cb);
+
+    /**
+     * @brief Downloads a file to disk.
+     * @param url Source URL.
+     * @param destinationPath Local filesystem path.
+     * @return true on success.
+     */
+    bool downloadFile(const std::string& url, const std::string& destinationPath);
+
+private:
+    struct Impl; // PIMPL for Boost.Beast implementation details
+    std::unique_ptr<Impl> pImpl_;
+};
+
+}

@@ -1,0 +1,63 @@
+
+/**
+ * @file ImageProcessor.hpp
+ * @brief Utilities for processing binary images and flash dumps.
+ * 
+ * Supports the "Image & Recovery" tab and Label Designer canvas features.
+ */
+
+#pragma once
+#include <vector>
+#include <string>
+#include <cstdint>
+#include <span>
+
+namespace Cognitive::Business {
+
+enum class ImageFormat {
+    PCX,
+    BMP,
+    Raw
+};
+
+class ImageProcessor {
+public:
+    /**
+     * @brief Converts raw raster data to PCX format supported by CPL.
+     * @param input Raw byte span (RGB or Gray).
+     * @param width Image width.
+     * @param height Image height.
+     * @return PCX encoded bytes.
+     */
+    static std::vector<uint8_t> convertToPCX(std::span<const uint8_t> input, int width, int height);
+
+    /**
+     * @brief Converts RGB input to 1-bit monochrome using thresholding.
+     */
+    static std::vector<uint8_t> convertToMonochrome(std::span<const uint8_t> input, int width, int height, int threshold = 128);
+    
+    /**
+     * @brief Processes Base64 encoded PNG data from HTML Canvas.
+     * @param base64Png Data string from canvas.toDataURL().
+     * @return Raw raster bytes ready for printing.
+     */
+    static std::vector<uint8_t> processCanvasData(const std::string& base64Png);
+
+    struct FlashImage {
+        uint32_t address;
+        std::vector<uint8_t> data;
+        std::string type; // "Configuration", "Firmware", "Graphics"
+    };
+    
+    /**
+     * @brief Parses a raw binary flash dump to identify known structures.
+     */
+    static std::vector<FlashImage> parseFlashDump(std::span<const uint8_t> dumpData);
+
+    /**
+     * @brief Extracts the specific configuration block from a flash dump.
+     */
+    static std::vector<uint8_t> extractConfiguration(std::span<const uint8_t> dumpData);
+};
+
+}

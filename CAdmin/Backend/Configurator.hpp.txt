@@ -1,0 +1,115 @@
+/**
+ * @file Configurator.hpp
+ * @brief Application configuration management.
+ * 
+ * Handles loading and saving persistent application settings (e.g., last used port, window size)
+ * to disk, typically using JSON format.
+ */
+
+#pragma once
+#include <string>
+#include <map>
+#include <boost/json.hpp>
+
+namespace Cognitive::App {
+
+/**
+ * @class Configurator
+ * @brief Singleton class for managing global application settings.
+ */
+class Configurator {
+public:
+    /**
+     * @brief Access the singleton instance.
+     * @return Configurator& Reference to the global instance.
+     */
+    static Configurator& global();
+
+    /**
+     * @brief Load configuration from a specific file path.
+     * @param path Filesystem path to the config file.
+     */
+    void load(const std::string& path);
+
+    /**
+     * @brief Save current configuration to a specific file path.
+     * @param path Filesystem path to write the config file.
+     */
+    void save(const std::string& path);
+
+    /**
+     * @brief Retrieve a string value.
+     * @param key Setting key.
+     * @param defaultValue Value to return if key is missing.
+     * @return std::string The value.
+     */
+    std::string getString(const std::string& key, const std::string& defaultValue = "");
+
+    /**
+     * @brief Retrieve an integer value.
+     * @param key Setting key.
+     * @param defaultValue Value to return if key is missing.
+     * @return int The value.
+     */
+    int getInt(const std::string& key, int defaultValue = 0);
+
+    /**
+     * @brief Retrieve a boolean value.
+     * @param key Setting key.
+     * @param defaultValue Value to return if key is missing.
+     * @return bool The value.
+     */
+    bool getBool(const std::string& key, bool defaultValue = false);
+
+    /**
+     * @brief Set or update a string value.
+     * @param key Setting key.
+     * @param value Value to store.
+     */
+    void setString(const std::string& key, const std::string& value);
+
+    /**
+     * @brief Set or update an integer value.
+     * @param key Setting key.
+     * @param value Value to store.
+     */
+    void setInt(const std::string& key, int value);
+
+    /**
+     * @brief Set or update a boolean value.
+     * @param key Setting key.
+     * @param value Value to store.
+     */
+    void setBool(const std::string& key, bool value);
+
+    /**
+     * @brief Get standard path for application data storage.
+     * @return std::string Path string.
+     */
+    std::string getAppDataPath() const;
+
+    /**
+     * @brief Get path where application executable resides.
+     * @return std::string Path string.
+     */
+    std::string getInstallPath() const;
+
+    /**
+     * @brief Sets the root path for external resources (HTML, FW).
+     * @param path Filesystem path.
+     */
+    void setResourcePath(const std::string& path);
+
+    /**
+     * @brief Gets the resource root path.
+     */
+    std::string getResourcePath() const;
+
+private:
+    Configurator();
+    std::map<std::string, std::string> properties_;
+    std::string currentConfigPath_;
+    std::string resourcePath_;
+};
+
+}

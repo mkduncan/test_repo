@@ -1,0 +1,238 @@
+#include "SerialDevice.hpp"
+#include "Obfuscation.hpp"
+#include <iostream>
+#include <filesystem>
+#include <future>
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <glob.h>
+#endif
+
+namespace Cognitive::HAL {
+
+SerialDevice::SerialDevice() : ioContext_(std::make_unique<boost::asio::io_context>()) {
+    serialPort_ = std::make_unique<boost::asio::serial_port>(*ioContext_);
+}
+
+SerialDevice::~SerialDevice() {
+    close();
+}
+
+bool SerialDevice::open(const std::string& path) {
+    lastError_.clear();
+    portName_ = path;
+    
+    try {
+        serialPort_->open(path);
+        
+        serialPort_->set_option(boost::asio::serial_port_base::baud_rate(baudRate_));
+        serialPort_->set_option(boost::asio::serial_port_base::character_size(8));
+        serialPort_->set_option(boost::asio::serial_port_base::stop_bits(boost::asio::serial_port_base::stop_bits::one));
+        serialPort_->set_option(boost::asio::serial_port_base::parity(boost::asio::serial_port_base::parity::none));
+        serialPort_->set_option(boost::asio::serial_port_base::flow_control(boost::asio::serial_port_base::flow_control::none));
+        
+        return true;
+    } catch (const boost::system::system_error& e) {
+        lastError_ = e.what();
+        return false;
+    }
+}
+
+void SerialDevice::close() {
+    if (serialPort_ && serialPort_->is_open()) {
+        boost::system::error_code ec;
+        serialPort_->cancel(ec);
+        serialPort_->close(ec);
+    }
+}
+
+bool SerialDevice::isOpen() const {
+    return serialPort_ && serialPort_->is_open();
+}
+
+bool SerialDevice::write(std::span<const uint8_t> data) {
+    if (!isOpen()) return false;
+    
+    try {
+        boost::asio::write(*serialPort_, boost::asio::buffer(data.data(), data.size()));
+        return true;
+    } catch (const boost::system::system_error& e) {
+        lastError_ = e.what();
+        return false;
+    }
+}
+
+std::vector<uint8_t> SerialDevice::read(size_t maxBytes, std::chrono::milliseconds timeout) {
+    if (!isOpen()) return {};
+
+    std::vector<uint8_t> buffer(maxBytes);
+    size_t bytesRead = 0;
+    
+    try {
+        std::future<size_t> readFuture = std::async(std::launch::async, [this, &buffer, maxBytes]() {
+            try {
+                return serialPort_->read_some(boost::asio::buffer(buffer.data(), maxBytes));
+            } catch (...) {
+                return size_t(0);
+            }
+        });
+
+        if (readFuture.wait_for(timeout) == std::future_status::ready) {
+            bytesRead = readFuture.get();
+        } else {
+            serialPort_->cancel();
+            // In a real scenario, forcing the future to complete after cancel is tricky if the driver hangs.
+            // For standard ASIO serial ports, cancel() usually works.
+            try { bytesRead = readFuture.get(); } catch (...) {} 
+        }
+        
+        buffer.resize(bytesRead);
+        return buffer;
+    } catch (const std::exception& e) {
+        lastError_ = e.what();
+        return {};
+    }
+}
+
+void SerialDevice::purge() {
+#ifdef _WIN32
+    if (isOpen()) {
+        PurgeComm(serialPort_->native_handle(), PURGE_RXCLEAR | PURGE_TXCLEAR);
+    }
+#endif
+}
+
+void SerialDevice::setBaudRate(unsigned int baudRate) {
+    baudRate_ = baudRate;
+    if (isOpen()) {
+        try {
+            serialPort_->set_option(boost::asio::serial_port_base::baud_rate(baudRate));
+        } catch (...) {}
+    }
+}
+
+void SerialDevice::setParity(boost::asio::serial_port_base::parity::type parity) {
+    if (isOpen()) serialPort_->set_option(boost::asio::serial_port_base::parity(parity));
+}
+
+void SerialDevice::setStopBits(boost::asio::serial_port_base::stop_bits::type stopBits) {
+    if (isOpen()) serialPort_->set_option(boost::asio::serial_port_base::stop_bits(stopBits));
+}
+
+void SerialDevice::setFlowControl(boost::asio::serial_port_base::flow_control::type flowControl) {
+    if (isOpen()) serialPort_->set_option(boost::asio::serial_port_base::flow_control(flowControl));
+}
+
+void SerialDevice::setBufferSize(size_t size) {
+    bufferSize_ = size;
+}
+
+void SerialDevice::setTimeout(std::chrono::milliseconds timeout) {
+    timeout_ = timeout;
+}
+
+bool SerialDevice::setDTR(bool level) {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    return EscapeCommFunction(serialPort_->native_handle(), level ? SETDTR : CLRDTR);
+#else
+    return false; 
+#endif
+}
+
+bool SerialDevice::setRTS(bool level) {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    return EscapeCommFunction(serialPort_->native_handle(), level ? SETRTS : CLRRTS);
+#else
+    return false; 
+#endif
+}
+
+bool SerialDevice::sendBreak() {
+    if (!isOpen()) return false;
+    serialPort_->send_break();
+    return true;
+}
+
+bool SerialDevice::setBreak(bool level) {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    return level ? SetCommBreak(serialPort_->native_handle()) : ClearCommBreak(serialPort_->native_handle());
+#else
+    return false;
+#endif
+}
+
+bool SerialDevice::getCTS() {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    DWORD status;
+    GetCommModemStatus(serialPort_->native_handle(), &status);
+    return (status & MS_CTS_ON);
+#else
+    return false;
+#endif
+}
+
+bool SerialDevice::getDSR() {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    DWORD status;
+    GetCommModemStatus(serialPort_->native_handle(), &status);
+    return (status & MS_DSR_ON);
+#else
+    return false;
+#endif
+}
+
+bool SerialDevice::getRI() {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    DWORD status;
+    GetCommModemStatus(serialPort_->native_handle(), &status);
+    return (status & MS_RING_ON);
+#else
+    return false;
+#endif
+}
+
+bool SerialDevice::getCD() {
+#ifdef _WIN32
+    if (!isOpen()) return false;
+    DWORD status;
+    GetCommModemStatus(serialPort_->native_handle(), &status);
+    return (status & MS_RLSD_ON);
+#else
+    return false;
+#endif
+}
+
+std::vector<std::string> SerialDevice::enumerate() {
+    std::vector<std::string> ports;
+#ifdef _WIN32
+    char path[5000];
+    for (int i = 1; i <= 255; i++) {
+        std::string name = "COM" + std::to_string(i);
+        if (QueryDosDeviceA(name.c_str(), path, 5000)) {
+            ports.push_back(name);
+        }
+    }
+#else
+    glob_t glob_result;
+    glob("/dev/ttyS*", GLOB_TILDE, NULL, &glob_result);
+    for(unsigned int i=0; i<glob_result.gl_pathc; ++i){
+        ports.push_back(std::string(glob_result.gl_pathv[i]));
+    }
+    glob("/dev/ttyUSB*", GLOB_TILDE, NULL, &glob_result);
+    for(unsigned int i=0; i<glob_result.gl_pathc; ++i){
+        ports.push_back(std::string(glob_result.gl_pathv[i]));
+    }
+    globfree(&glob_result);
+#endif
+    return ports;
+}
+
+}

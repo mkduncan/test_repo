@@ -1,0 +1,31 @@
+/**
+ * @file Application.hpp
+ * @brief Main Application Entry Point.
+ * 
+ * Initializes wxWidgets, starts the main loop, and manages global singleton life cycles.
+ */
+
+#pragma once
+#include <wx/wx.h>
+
+namespace Cognitive::App {
+
+class Application : public wxApp {
+public:
+    /**
+     * @brief Initialization hook.
+     * @return true if successful.
+     */
+    bool OnInit() override;
+
+    /**
+     * @brief Cleanup hook.
+     * @return Exit code.
+     */
+    int OnExit() override;
+};
+
+}
+
+// Macro to generate main() function
+wxDECLARE_APP(Cognitive::App::Application);

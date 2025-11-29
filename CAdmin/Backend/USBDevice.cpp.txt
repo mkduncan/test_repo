@@ -1,0 +1,274 @@
+#include "USBDevice.hpp"
+#include "Obfuscation.hpp"
+#include <iostream>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <setupapi.h>
+#include <initguid.h>
+#include <winusb.h>
+#pragma comment(lib, "setupapi.lib")
+#pragma comment(lib, "winusb.lib")
+
+DEFINE_GUID(GUID_DEVINTERFACE_USB_DEVICE, 
+  0xA5DCBF10L, 0x6530, 0x11D2, 0x90, 0x1F, 0x00, 0xC0, 0x4F, 0xB9, 0x51, 0xED);
+
+#else
+#include <libusb-1.0/libusb.h>
+#endif
+
+namespace Cognitive::HAL {
+
+struct USBDevice::Impl {
+#ifdef _WIN32
+    HANDLE hDevice = INVALID_HANDLE_VALUE;
+    WINUSB_INTERFACE_HANDLE hWinUsb = NULL;
+    UCHAR bulkInPipe = 0;
+    UCHAR bulkOutPipe = 0;
+#else
+    libusb_context* ctx = nullptr;
+    libusb_device_handle* handle = nullptr;
+    int interfaceNum = 0;
+    uint8_t epIn = 0;
+    uint8_t epOut = 0;
+#endif
+};
+
+USBDevice::USBDevice() : pImpl_(std::make_unique<Impl>()) {
+#ifndef _WIN32
+    libusb_init(&pImpl_->ctx);
+#endif
+}
+
+USBDevice::~USBDevice() {
+    close();
+#ifndef _WIN32
+    if (pImpl_->ctx) {
+        libusb_exit(pImpl_->ctx);
+    }
+#endif
+}
+
+bool USBDevice::open(const std::string& path) {
+    devicePath_ = path;
+    lastError_.clear();
+    
+#ifdef _WIN32
+    pImpl_->hDevice = CreateFileA(path.c_str(),
+                                 GENERIC_READ | GENERIC_WRITE,
+                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 NULL,
+                                 OPEN_EXISTING,
+                                 FILE_FLAG_OVERLAPPED,
+                                 NULL);
+                                 
+    if (pImpl_->hDevice == INVALID_HANDLE_VALUE) {
+        lastError_ = OBF("Failed to open USB device handle");
+        return false;
+    }
+
+    if (!WinUsb_Initialize(pImpl_->hDevice, &pImpl_->hWinUsb)) {
+        lastError_ = OBF("WinUsb_Initialize failed");
+        CloseHandle(pImpl_->hDevice);
+        pImpl_->hDevice = INVALID_HANDLE_VALUE;
+        return false;
+    }
+
+    USB_INTERFACE_DESCRIPTOR ifaceDescriptor;
+    if (!WinUsb_QueryInterfaceSettings(pImpl_->hWinUsb, 0, &ifaceDescriptor)) {
+        return false;
+    }
+
+    for (int i = 0; i < ifaceDescriptor.bNumEndpoints; i++) {
+        WINUSB_PIPE_INFORMATION pipeInfo;
+        if (WinUsb_QueryPipe(pImpl_->hWinUsb, 0, (UCHAR)i, &pipeInfo)) {
+            if (USB_ENDPOINT_DIRECTION_IN(pipeInfo.PipeId)) {
+                pImpl_->bulkInPipe = pipeInfo.PipeId;
+            } else {
+                pImpl_->bulkOutPipe = pipeInfo.PipeId;
+            }
+        }
+    }
+    return true;
+#else
+    // path format: VID:PID:SERIAL
+    uint16_t vid = 0, pid = 0;
+    std::string serial;
+    size_t p1 = path.find(':');
+    size_t p2 = path.find(':', p1 + 1);
+    if (p1 != std::string::npos && p2 != std::string::npos) {
+        vid = (uint16_t)std::stoi(path.substr(0, p1), nullptr, 16);
+        pid = (uint16_t)std::stoi(path.substr(p1 + 1, p2 - p1 - 1), nullptr, 16);
+        serial = path.substr(p2 + 1);
+    } else {
+        return false;
+    }
+
+    pImpl_->handle = libusb_open_device_with_vid_pid(pImpl_->ctx, vid, pid);
+    if (!pImpl_->handle) return false;
+
+    // Verify serial number if needed, claim interface
+    if (libusb_kernel_driver_active(pImpl_->handle, 0) == 1) {
+        libusb_detach_kernel_driver(pImpl_->handle, 0);
+    }
+    if (libusb_claim_interface(pImpl_->handle, 0) < 0) {
+        libusb_close(pImpl_->handle);
+        pImpl_->handle = nullptr;
+        return false;
+    }
+    
+    // Assume standard endpoint config for printer class
+    pImpl_->epOut = 0x01;
+    pImpl_->epIn = 0x81;
+    
+    return true;
+#endif
+}
+
+void USBDevice::close() {
+#ifdef _WIN32
+    if (pImpl_->hWinUsb) {
+        WinUsb_Free(pImpl_->hWinUsb);
+        pImpl_->hWinUsb = NULL;
+    }
+    if (pImpl_->hDevice != INVALID_HANDLE_VALUE) {
+        CloseHandle(pImpl_->hDevice);
+        pImpl_->hDevice = INVALID_HANDLE_VALUE;
+    }
+#else
+    if (pImpl_->handle) {
+        libusb_release_interface(pImpl_->handle, pImpl_->interfaceNum);
+        libusb_close(pImpl_->handle);
+        pImpl_->handle = nullptr;
+    }
+#endif
+}
+
+bool USBDevice::isOpen() const {
+#ifdef _WIN32
+    return pImpl_->hWinUsb != NULL;
+#else
+    return pImpl_->handle != nullptr;
+#endif
+}
+
+bool USBDevice::write(std::span<const uint8_t> data) {
+    if (!isOpen()) return false;
+#ifdef _WIN32
+    ULONG bytesWritten;
+    if (!WinUsb_WritePipe(pImpl_->hWinUsb, pImpl_->bulkOutPipe, (PUCHAR)data.data(), (ULONG)data.size(), &bytesWritten, NULL)) {
+        return false;
+    }
+    return bytesWritten == data.size();
+#else
+    int transferred;
+    return libusb_bulk_transfer(pImpl_->handle, pImpl_->epOut, (unsigned char*)data.data(), (int)data.size(), &transferred, 1000) == 0;
+#endif
+}
+
+std::vector<uint8_t> USBDevice::read(size_t maxBytes, std::chrono::milliseconds timeout) {
+    if (!isOpen()) return {};
+    std::vector<uint8_t> buffer(maxBytes);
+#ifdef _WIN32
+    ULONG bytesRead;
+    ULONG timeoutMs = (ULONG)timeout.count();
+    WinUsb_SetPipePolicy(pImpl_->hWinUsb, pImpl_->bulkInPipe, PIPE_TRANSFER_TIMEOUT, sizeof(timeoutMs), &timeoutMs);
+    
+    if (WinUsb_ReadPipe(pImpl_->hWinUsb, pImpl_->bulkInPipe, buffer.data(), (ULONG)maxBytes, &bytesRead, NULL)) {
+        buffer.resize(bytesRead);
+        return buffer;
+    }
+    return {};
+#else
+    int transferred;
+    if (libusb_bulk_transfer(pImpl_->handle, pImpl_->epIn, buffer.data(), (int)maxBytes, &transferred, (unsigned int)timeout.count()) == 0) {
+        buffer.resize(transferred);
+        return buffer;
+    }
+    return {};
+#endif
+}
+
+void USBDevice::purge() {
+#ifdef _WIN32
+    if (isOpen()) {
+        WinUsb_FlushPipe(pImpl_->hWinUsb, pImpl_->bulkInPipe);
+    }
+#endif
+}
+
+bool USBDevice::reset() {
+#ifdef _WIN32
+    if (isOpen()) {
+        return WinUsb_ResetPipe(pImpl_->hWinUsb, pImpl_->bulkOutPipe) && WinUsb_ResetPipe(pImpl_->hWinUsb, pImpl_->bulkInPipe);
+    }
+    return false;
+#else
+    return libusb_reset_device(pImpl_->handle) == 0;
+#endif
+}
+
+std::vector<DeviceInfo> USBDevice::enumerate() {
+    std::vector<DeviceInfo> devices;
+#ifdef _WIN32
+    HDEVINFO hDevInfo;
+    SP_DEVICE_INTERFACE_DATA DevIntfData;
+    PSP_DEVICE_INTERFACE_DETAIL_DATA DevIntfDetailData;
+    SP_DEVINFO_DATA DevData;
+
+    hDevInfo = SetupDiGetClassDevs(&GUID_DEVINTERFACE_USB_DEVICE, NULL, NULL, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
+    if (hDevInfo == INVALID_HANDLE_VALUE) return devices;
+
+    DevIntfData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+    for (int i = 0; SetupDiEnumDeviceInterfaces(hDevInfo, NULL, &GUID_DEVINTERFACE_USB_DEVICE, i, &DevIntfData); i++) {
+        DWORD dwSize = 0;
+        SetupDiGetDeviceInterfaceDetail(hDevInfo, &DevIntfData, NULL, 0, &dwSize, NULL);
+        
+        std::vector<BYTE> buf(dwSize);
+        DevIntfDetailData = (PSP_DEVICE_INTERFACE_DETAIL_DATA)buf.data();
+        DevIntfDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+        DevData.cbSize = sizeof(SP_DEVINFO_DATA);
+
+        if (SetupDiGetDeviceInterfaceDetail(hDevInfo, &DevIntfData, DevIntfDetailData, dwSize, &dwSize, &DevData)) {
+            std::string path = DevIntfDetailData->DevicePath;
+            if (path.find("vid_") != std::string::npos) {
+                 DeviceInfo info;
+                 info.path = path;
+                 info.id = "USB:" + path;
+                 info.name = "USB Device";
+                 info.type = DeviceType::USB;
+                 devices.push_back(info);
+            }
+        }
+    }
+    SetupDiDestroyDeviceInfoList(hDevInfo);
+#else
+    libusb_context* ctx = nullptr;
+    libusb_init(&ctx);
+    libusb_device **devs;
+    ssize_t cnt = libusb_get_device_list(ctx, &devs);
+    if (cnt > 0) {
+        for (ssize_t i = 0; i < cnt; i++) {
+            libusb_device_descriptor desc;
+            libusb_get_device_descriptor(devs[i], &desc);
+            // Filter Cognitive VID 0x0828
+            if (desc.idVendor == 0x0828) {
+                DeviceInfo info;
+                char path[64];
+                sprintf(path, "%04x:%04x", desc.idVendor, desc.idProduct);
+                info.path = path;
+                info.id = "USB:" + std::string(path);
+                info.name = "Cognitive USB Printer";
+                info.type = DeviceType::USB;
+                devices.push_back(info);
+            }
+        }
+        libusb_free_device_list(devs, 1);
+    }
+    libusb_exit(ctx);
+#endif
+    return devices;
+}
+
+}

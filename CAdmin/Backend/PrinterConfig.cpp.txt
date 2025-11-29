@@ -1,0 +1,125 @@
+#include "PrinterConfig.hpp"
+#include <boost/json.hpp>
+
+namespace Cognitive::Business {
+
+boost::json::object PrinterConfig::toJson() const {
+    boost::json::object obj;
+    obj["modelNumber"] = modelNumber;
+    obj["serialNumber"] = serialNumber;
+    obj["macAddress"] = macAddress;
+    obj["firmwareVersion"] = firmwareVersion;
+    obj["productLine"] = static_cast<int>(productLine);
+    obj["printMethod"] = static_cast<int>(printMethod);
+    obj["mediaWidth"] = mediaWidth;
+    obj["printDensity"] = printDensity;
+    obj["printSpeed"] = printSpeed;
+    obj["exitOption"] = static_cast<int>(exitOption);
+    obj["memRTC"] = static_cast<int>(memRTC);
+    obj["commInterface"] = static_cast<int>(commInterface);
+    obj["printHead"] = static_cast<int>(printHead);
+    obj["configEmulation"] = static_cast<int>(configEmulation);
+    obj["powerSupplyCord"] = static_cast<int>(powerSupplyCord);
+    obj["languageOption"] = static_cast<int>(languageOption);
+    obj["locationCode"] = static_cast<int>(locationCode);
+    obj["customization"] = customization;
+    
+    obj["isWingman"] = isWingman;
+    obj["isGattaca"] = isGattaca;
+    obj["isLX"] = isLX;
+    obj["isBluetooth"] = isBluetooth;
+    obj["isNetwork"] = isNetwork;
+    obj["isMadeInChina"] = isMadeInChina;
+    obj["isPCL"] = isPCL;
+    obj["isTouchstar"] = isTouchstar;
+    obj["isMeter"] = isMeter;
+    obj["isSiemens"] = isSiemens;
+    obj["isResco"] = isResco;
+    obj["isHD"] = isHD;
+    obj["isApple"] = isApple;
+    obj["isSecurity"] = isSecurity;
+    obj["isGWN"] = isGWN;
+    obj["isBS"] = isBS;
+    obj["isTGModelNumber"] = isTGModelNumber;
+    obj["isTDModelNumber"] = isTDModelNumber;
+    obj["isMadeByEnnoconnMalaysia"] = isMadeByEnnoconnMalaysia;
+
+    boost::json::object extra;
+    for(const auto& [key, var] : extraSettings) {
+        if(std::holds_alternative<int>(var)) extra[key] = std::get<int>(var);
+        else if(std::holds_alternative<bool>(var)) extra[key] = std::get<bool>(var);
+        else extra[key] = std::get<std::string>(var);
+    }
+    obj["extraSettings"] = extra;
+
+    return obj;
+}
+
+PrinterConfig PrinterConfig::fromJson(const boost::json::object& obj) {
+    PrinterConfig config;
+    auto getString = [&](const char* key) {
+        if (obj.contains(key)) return std::string(obj.at(key).as_string().c_str());
+        return std::string();
+    };
+    auto getInt = [&](const char* key) {
+        if (obj.contains(key)) return static_cast<int>(obj.at(key).as_int64());
+        return 0;
+    };
+    auto getBool = [&](const char* key) {
+        if (obj.contains(key)) return obj.at(key).as_bool();
+        return false;
+    };
+
+    config.modelNumber = getString("modelNumber");
+    config.serialNumber = getString("serialNumber");
+    config.macAddress = getString("macAddress");
+    config.firmwareVersion = getString("firmwareVersion");
+
+    config.productLine = static_cast<ProductLine>(getInt("productLine"));
+    config.printMethod = static_cast<PrintMethod>(getInt("printMethod"));
+    config.mediaWidth = getInt("mediaWidth");
+    config.printDensity = getInt("printDensity");
+    config.printSpeed = getInt("printSpeed");
+    config.exitOption = static_cast<ExitOption>(getInt("exitOption"));
+    config.memRTC = static_cast<MemRTC>(getInt("memRTC"));
+    config.commInterface = static_cast<CommunicationInterface>(getInt("commInterface"));
+    config.printHead = static_cast<PrintHead>(getInt("printHead"));
+    config.configEmulation = static_cast<ConfigurationEmulation>(getInt("configEmulation"));
+    config.powerSupplyCord = static_cast<PowerSupplyCord>(getInt("powerSupplyCord"));
+    config.languageOption = static_cast<LanguageOption>(getInt("languageOption"));
+    config.locationCode = static_cast<LocationCode>(getInt("locationCode"));
+    
+    config.customization = getString("customization");
+
+    config.isWingman = getBool("isWingman");
+    config.isGattaca = getBool("isGattaca");
+    config.isLX = getBool("isLX");
+    config.isBluetooth = getBool("isBluetooth");
+    config.isNetwork = getBool("isNetwork");
+    config.isMadeInChina = getBool("isMadeInChina");
+    config.isPCL = getBool("isPCL");
+    config.isTouchstar = getBool("isTouchstar");
+    config.isMeter = getBool("isMeter");
+    config.isSiemens = getBool("isSiemens");
+    config.isResco = getBool("isResco");
+    config.isHD = getBool("isHD");
+    config.isApple = getBool("isApple");
+    config.isSecurity = getBool("isSecurity");
+    config.isGWN = getBool("isGWN");
+    config.isBS = getBool("isBS");
+    config.isTGModelNumber = getBool("isTGModelNumber");
+    config.isTDModelNumber = getBool("isTDModelNumber");
+    config.isMadeByEnnoconnMalaysia = getBool("isMadeByEnnoconnMalaysia");
+
+    if (obj.contains("extraSettings")) {
+        for (const auto& item : obj.at("extraSettings").as_object()) {
+            if (item.value().is_int64()) config.extraSettings[std::string(item.key())] = static_cast<int>(item.value().as_int64());
+            else if (item.value().is_bool()) config.extraSettings[std::string(item.key())] = item.value().as_bool();
+            else if (item.value().is_string()) config.extraSettings[std::string(item.key())] = std::string(item.value().as_string().c_str());
+        }
+    }
+
+    return config;
+}
+
+}

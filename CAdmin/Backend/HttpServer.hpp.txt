@@ -1,0 +1,98 @@
+/**
+ * @file HttpServer.hpp
+ * @brief Embedded HTTP server for local resource hosting.
+ * 
+ * Hosts firmware files and accepts log uploads from the WebView frontend
+ * or external devices on the network.
+ */
+
+#pragma once
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <string>
+#include <functional>
+#include <memory>
+#include <map>
+#include <thread>
+#include <atomic>
+
+namespace Cognitive::Network {
+
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace net = boost::asio;
+using tcp = net::ip::tcp;
+
+struct HttpRequest {
+    std::string method;
+    std::string target;
+    std::string body;
+    std::map<std::string, std::string> headers;
+};
+
+struct HttpResponse {
+    int status = 200;
+    std::string body;
+    std::string contentType = "text/plain";
+    std::map<std::string, std::string> headers;
+};
+
+using RequestHandler = std::function<HttpResponse(const HttpRequest&)>;
+
+class HttpServer {
+public:
+    /**
+     * @brief Construct a new Http Server.
+     * @param address Bind address (e.g. "0.0.0.0").
+     * @param port Port to listen on (e.g. 8080).
+     */
+    explicit HttpServer(const std::string& address, uint16_t port);
+    ~HttpServer();
+
+    /**
+     * @brief Starts the server loop in a separate thread.
+     * @return true if started successfully.
+     */
+    bool start();
+
+    /**
+     * @brief Stops the server.
+     */
+    void stop();
+    
+    bool isRunning() const;
+
+    /**
+     * @brief Registers a callback handler for a specific path.
+     * @param path URL path.
+     * @param method HTTP method (GET, POST).
+     * @param handler Callback function.
+     */
+    void registerHandler(const std::string& path, const std::string& method, RequestHandler handler);
+
+    /**
+     * @brief Serves a local directory as static files.
+     * @param path URL prefix.
+     * @param directory Local filesystem path.
+     */
+    void registerStaticDirectory(const std::string& path, const std::string& directory);
+
+private:
+    void runLoop();
+    void doAccept();
+    
+    class Session; // PIMPL for session logic
+    
+    std::string address_;
+    uint16_t port_;
+    std::atomic<bool> running_{false};
+    
+    net::io_context ioContext_;
+    std::unique_ptr<tcp::acceptor> acceptor_;
+    std::thread serverThread_;
+    
+    std::map<std::string, RequestHandler> handlers_; // Key: "METHOD:PATH"
+};
+
+}

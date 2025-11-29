@@ -1,0 +1,160 @@
+#include "DeviceManager.hpp"
+#include "USBDevice.hpp"
+#include "SerialDevice.hpp"
+#include "LANDevice.hpp"
+#include "BTDevice.hpp"
+#include "LPTDevice.hpp"
+#include "Obfuscation.hpp"
+
+namespace Cognitive::HAL {
+
+DeviceManager& DeviceManager::instance() {
+    static DeviceManager instance;
+    return instance;
+}
+
+DeviceManager::DeviceManager() : monitoring_(false) {
+    startBackgroundMonitoring();
+}
+
+DeviceManager::~DeviceManager() {
+    stopBackgroundMonitoring();
+    disconnectAll();
+}
+
+std::vector<DeviceInfo> DeviceManager::scanDevices() {
+    std::vector<DeviceInfo> allDevices;
+
+    auto usbDevices = USBDevice::enumerate();
+    allDevices.insert(allDevices.end(), usbDevices.begin(), usbDevices.end());
+
+    auto serialPorts = SerialDevice::enumerate();
+    for (const auto& port : serialPorts) {
+        DeviceInfo info;
+        info.id = "SERIAL:" + port;
+        info.name = "Serial Port " + port;
+        info.path = port;
+        info.type = DeviceType::Serial;
+        allDevices.push_back(info);
+    }
+
+    auto lanDevices = LANDevice::discover(std::chrono::seconds(2));
+    allDevices.insert(allDevices.end(), lanDevices.begin(), lanDevices.end());
+
+    auto btDevices = BTDevice::enumerate();
+    allDevices.insert(allDevices.end(), btDevices.begin(), btDevices.end());
+
+    return allDevices;
+}
+
+std::shared_ptr<Device> DeviceManager::createDevice(DeviceType type) {
+    switch (type) {
+        case DeviceType::Serial: return std::make_shared<SerialDevice>();
+        case DeviceType::USB: return std::make_shared<USBDevice>();
+        case DeviceType::Network: return std::make_shared<LANDevice>();
+        case DeviceType::Bluetooth: return std::make_shared<BTDevice>();
+        case DeviceType::Parallel: return std::make_shared<LPTDevice>();
+        default: return nullptr;
+    }
+}
+
+std::shared_ptr<Device> DeviceManager::getDevice(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = activeDevices_.find(id);
+    if (it != activeDevices_.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+bool DeviceManager::connect(const std::string& id, const std::string& path, DeviceType type) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    
+    if (activeDevices_.find(id) != activeDevices_.end()) {
+        return true; 
+    }
+
+    auto device = createDevice(type);
+    if (!device) return false;
+
+    if (device->open(path)) {
+        activeDevices_[id] = device;
+        if (onConnected_) {
+            DeviceInfo info;
+            info.id = id;
+            info.path = path;
+            info.type = type;
+            info.connected = true;
+            onConnected_(info);
+        }
+        return true;
+    }
+    return false;
+}
+
+void DeviceManager::disconnect(const std::string& id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = activeDevices_.find(id);
+    if (it != activeDevices_.end()) {
+        it->second->close();
+        activeDevices_.erase(it);
+        if (onDisconnected_) {
+            DeviceInfo info;
+            info.id = id;
+            onDisconnected_(info);
+        }
+    }
+}
+
+void DeviceManager::disconnectAll() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (auto& [id, device] : activeDevices_) {
+        device->close();
+    }
+    activeDevices_.clear();
+}
+
+void DeviceManager::startBackgroundMonitoring(int intervalMs) {
+    if (monitoring_) return;
+    monitorInterval_ = intervalMs;
+    monitoring_ = true;
+    monitorThread_ = std::thread(&DeviceManager::monitorLoop, this);
+}
+
+void DeviceManager::stopBackgroundMonitoring() {
+    monitoring_ = false;
+    if (monitorThread_.joinable()) {
+        monitorThread_.join();
+    }
+}
+
+void DeviceManager::monitorLoop() {
+    while (monitoring_) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto it = activeDevices_.begin(); it != activeDevices_.end(); ) {
+                if (!it->second->isOpen()) {
+                    if (onDisconnected_) {
+                        DeviceInfo info;
+                        info.id = it->first;
+                        onDisconnected_(info);
+                    }
+                    it = activeDevices_.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(monitorInterval_));
+    }
+}
+
+void DeviceManager::setDeviceConnectedCallback(DeviceCallback cb) {
+    onConnected_ = cb;
+}
+
+void DeviceManager::setDeviceDisconnectedCallback(DeviceCallback cb) {
+    onDisconnected_ = cb;
+}
+
+}
